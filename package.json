@@ -1,0 +1,17 @@
+{
+  "name": "my-discord-bot",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "discord.js": "^14.20.0",
+    "firebase-admin": "^13.4.0",
+    "node-fetch": "^2.7.0"
+  }
+}
