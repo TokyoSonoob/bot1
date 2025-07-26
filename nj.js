@@ -11,7 +11,7 @@ module.exports = function (client) {
         .setDescription("test")
         .setColor(0xff6f61)
         .setImage("https://i.pinimg.com/originals/34/1e/80/341e800b1f29d3e34ea2eba5a6af205c.gif")
-        .setFooter({ text: "Powered by NJ Bot" });
+        .setFooter({ text: "Make by Purple Shop" });
 
       await message.channel.send({ embeds: [embed] });
     }
