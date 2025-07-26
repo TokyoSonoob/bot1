@@ -20,6 +20,7 @@ const {
   getAuctionData,
   deleteAuctionData,
 } = require("./storage");
+require("./server");
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
