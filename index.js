@@ -148,23 +148,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         ],
       });
 
-     try {
-  if (!interaction.replied && !interaction.deferred) {
-    await interaction.reply({
-      content: `✅ สร้างห้องส่วนตัวของคุณแล้ว: ${channel}`,
-      flags: 1 << 6,
-    });
-  } else {
-    await interaction.followUp({
-      content: `✅ สร้างห้องส่วนตัวของคุณแล้ว: ${channel}`,
-      flags: 1 << 6,
-    });
-  }
-} catch (error) {
-  console.warn("ตอบ interaction ไม่ได้:", error.message);
-}
-
-
       // ✅ บันทึก baseName หลังสร้างห้อง
       await admin.firestore().collection("auctions_meta").doc(channel.id).set({
         baseName: baseName,
