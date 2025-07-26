@@ -21,7 +21,6 @@ const {
   deleteAuctionData,
 } = require("./storage");
 require("./server");
-require("./nj")(client);
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -29,6 +28,8 @@ const client = new Client({
     GatewayIntentBits.MessageContent,
   ],
 });
+require("./nj")(client);
+
 const imageCollectorState = new Map();
 const restrictedChannels = new Set();
 const LOG_CHANNEL_ID = "YOUR_LOG_CHANNEL_ID"; // 🔧 เปลี่ยนตรงนี้เป็น ID ห้อง log
