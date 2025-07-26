@@ -447,7 +447,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 ## กฎ : ${rules}
 ## ปิดเวลา 20:00 น.
 ## วันที่ : รอคิวก่อน
-||everyone||`;
+||@everyone||`;
 
     if (!globalThis.lastFullSummary) globalThis.lastFullSummary = {};
     globalThis.lastFullSummary[interaction.channel.id] = fullSummary;
