@@ -1,3 +1,18 @@
+const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
+const { token } = require("./token");
+
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+  ],
+});
+
+client.on("ready", () => {
+  console.log(`✅ Logged in as ${client.user.tag}`);
+});
+
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
 
@@ -13,3 +28,5 @@ client.on("messageCreate", async (message) => {
     await message.channel.send({ embeds: [embed] });
   }
 });
+
+client.login(token);
