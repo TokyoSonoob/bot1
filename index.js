@@ -28,7 +28,7 @@ const client = new Client({
     GatewayIntentBits.MessageContent,
   ],
 });
-require("./nj")(client);
+require("./money")(client);
 
 const imageCollectorState = new Map();
 const restrictedChannels = new Set();
