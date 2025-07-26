@@ -7,7 +7,7 @@ module.exports = function (client) {
     if (message.content === "!nj") {
       await message.delete().catch(console.error);
       const embed = new EmbedBuilder()
-        .setTitle("⭐สามารถโอนได้ทั้ง ทรูและวอเลตเลยน้าา")
+        .setTitle("⭐ สามารถโอนได้เลยน้าา")
         .setDescription("ช่องทางการชำระเงิน")
         .setColor(0x9b59b6)
         .setImage("https://drive.google.com/uc?export=download&id=1z6GLXQIJ6mVWjYQuMId7DUpfdy1oup40")
