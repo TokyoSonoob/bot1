@@ -120,6 +120,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
         .replace(/[^a-zA-Z0-9ก-๙\-]/g, "");
 
       // 🏗️ สร้างห้องใหม่
+      await interaction.reply({
+        content: `✅ สร้างห้องส่วนตัวของคุณแล้ว: ${channel}`,
+        flags: 1 << 6,
+      });
+      
       const channel = await interaction.guild.channels.create({
         name: channelName,
         type: 0,
