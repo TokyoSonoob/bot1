@@ -1,4 +1,6 @@
-module.exports = function(client) {
+const { EmbedBuilder } = require("discord.js");
+
+module.exports = function (client) {
   client.on("messageCreate", async (message) => {
     if (message.author.bot) return;
 
