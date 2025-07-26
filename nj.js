@@ -1,5 +1,4 @@
-const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
-const { token } = require("./token");
+ const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
 
 const client = new Client({
   intents: [
