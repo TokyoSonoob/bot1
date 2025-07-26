@@ -204,14 +204,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     if (interaction.customId === "fill_info") {
-      const member = await guild.members.fetch(interaction.user.id);
-      if (!member.permissions.has(PermissionsBitField.Flags.ManageChannels)) {
-        return interaction.reply({
-          content: "❌ คุณไม่มีสิทธิ์ใช้ฟอร์มนี้",
-          flags: 1 << 6,
-        });
-      }
-
       const modal = new ModalBuilder()
         .setCustomId("auction_form")
         .setTitle("📋 กรอกข้อมูลการประมูล");
