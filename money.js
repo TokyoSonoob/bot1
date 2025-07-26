@@ -26,5 +26,27 @@ module.exports = function (client) {
 
       await message.channel.send({ embeds: [embed] });
     }
+    if (message.content === "!sky") {
+      await message.delete().catch(console.error);
+      const embed = new EmbedBuilder()
+        .setTitle("⭐ สามารถโอนได้เลยน้าา")
+        .setDescription("ช่องทางการชำระเงิน")
+        .setColor(0x9b59b6)
+        .setImage("https://drive.google.com/uc?export=download&id=1zCzdEkTe13jE0pRkzn5LvgMXGXIf3xiF")
+        .setFooter({ text: "Make by Purple Shop" });
+
+      await message.channel.send({ embeds: [embed] });
+    }
+    if (message.content === "!ne") {
+      await message.delete().catch(console.error);
+      const embed = new EmbedBuilder()
+        .setTitle("⭐ สามารถโอนได้เลยน้าา")
+        .setDescription("ช่องทางการชำระเงิน")
+        .setColor(0x9b59b6)
+        .setImage("https://drive.google.com/uc?export=download&id=1zFIRbkzMcQWlGNAQemuqZonfdqhLfvwi")
+        .setFooter({ text: "Make by Purple Shop" });
+
+      await message.channel.send({ embeds: [embed] });
+    }
   });
 };
