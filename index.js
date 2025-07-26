@@ -12,7 +12,6 @@ const {
   TextInputStyle,
   ActionRowBuilder: ModalRowBuilder,
 } = require("discord.js");
-const { token } = require("./token");
 const fetch = require("node-fetch");
 const path = require("path");
 const admin = require("firebase-admin");
