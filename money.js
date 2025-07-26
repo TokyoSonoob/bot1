@@ -10,7 +10,7 @@ module.exports = function (client) {
         .setTitle("⭐สามารถโอนได้ทั้ง ทรูและวอเลตเลยน้าา")
         .setDescription("ช่องทางการชำระเงิน")
         .setColor(0x9b59b6)
-        .setImage("https://i.pinimg.com/originals/34/1e/80/341e800b1f29d3e34ea2eba5a6af205c.gif")
+        .setImage("https://drive.google.com/uc?export=download&id=1z6GLXQIJ6mVWjYQuMId7DUpfdy1oup40")
         .setFooter({ text: "Make by Purple Shop" });
 
       await message.channel.send({ embeds: [embed] });
