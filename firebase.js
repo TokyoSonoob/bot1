@@ -1,5 +1,14 @@
 const admin = require('firebase-admin');
-const serviceAccount = require('./firebase-key.json');
+
+let serviceAccount;
+
+if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+  // กรณีใช้ Environment Variable (string JSON)
+  serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+} else {
+  // กรณี fallback โหลดจากไฟล์
+  serviceAccount = require('./firebase-key.json');
+}
 
 if (!admin.apps.length) {
   admin.initializeApp({
