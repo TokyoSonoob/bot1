@@ -57,10 +57,7 @@ client.on("messageCreate", async (message) => {
       .setDescription('เปิดตั๋วเพื่อจองห้อง')
       .setColor(0x9b59b6)
       .setImage('https://media.tenor.com/S4MdyoCR3scAAAAM/oblakao.gif')
-      .setFooter({
-        text: 'Powered by ticketsbot.cloud',
-        iconURL: 'https://cdn-icons-png.flaticon.com/512/5968/5968892.png'
-      });
+      .setFooter({ text: "Make by Purple Shop" });
 
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
