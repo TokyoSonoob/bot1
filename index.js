@@ -29,7 +29,6 @@ const client = new Client({
   ],
 });
 require("./money")(client);
-require("./skin")(client);
 
 const imageCollectorState = new Map();
 const restrictedChannels = new Set();
