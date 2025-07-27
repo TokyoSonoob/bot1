@@ -15,6 +15,13 @@ const {
 const fetch = require("node-fetch");
 const path = require("path");
 const admin = require("firebase-admin");
+const serviceAccount = require("./firebase-key.json");
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
+const db = admin.firestore();
+
 const {
   saveAuctionData,
   getAuctionData,
@@ -29,7 +36,7 @@ const client = new Client({
   ],
 });
 require("./money")(client);
-require("./skin")(client);
+require("./skin")(client, db);
 
 const imageCollectorState = new Map();
 const restrictedChannels = new Set();
