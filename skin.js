@@ -9,6 +9,15 @@ const {
   PermissionsBitField,
 } = require("discord.js");
 
+const admin = require("firebase-admin");
+const serviceAccount = require("./firebase-key.json");
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
+
+const db = admin.firestore();
+
 module.exports = function (client) {
 const express = require("express");
 const bodyParser = require("body-parser");
@@ -171,22 +180,40 @@ if (userChannels.size >= 3) {
         },
       ],
     });
-    const embed = new EmbedBuilder()
-      .setTitle(`${skinName}`)
-      .setColor(0x9b59b6)
+    const skinOrdersRef = db.collection("skinOrders");
+const querySnapshot = await skinOrdersRef.where("id", "==", channel.id).get();
 
-    const deleteBtn = new ButtonBuilder()
-      .setCustomId("delete_ticket")
-      .setLabel("🗑️ ลบตั๋ว")
-      .setStyle(ButtonStyle.Danger);
+let extraDescription = "";
 
-    const row = new ActionRowBuilder().addComponents(deleteBtn);
+if (!querySnapshot.empty) {
+  querySnapshot.forEach((doc) => {
+    const order = doc.data();
 
-    await channel.send({
-      content: `<@${user.id}>\n<@${pingUserId}>`,
-      embeds: [embed],
-      components: [row],
-    });
+    // สมมติ order มี userId, skin, createdAt
+    extraDescription += `\n- ผู้เปิดตั๋ว: <@${order.userId}>\n- ลายเส้น: ${order.skin}\n- เปิดเมื่อ: ${order.createdAt?.toDate().toLocaleString() || "-"}\n`;
+  });
+} else {
+  extraDescription = "ไม่พบข้อมูลในฐานข้อมูล skinOrders สำหรับห้องนี้";
+}
+
+const embed = new EmbedBuilder()
+  .setTitle(`${skinName}`)
+  .setColor(0x9b59b6)
+  .setDescription(extraDescription);
+
+// ปุ่มลบตั๋ว
+const deleteBtn = new ButtonBuilder()
+  .setCustomId("delete_ticket")
+  .setLabel("🗑️ ลบตั๋ว")
+  .setStyle(ButtonStyle.Danger);
+
+const row = new ActionRowBuilder().addComponents(deleteBtn);
+
+await channel.send({
+  content: `<@${user.id}>\n<@${pingUserId}>`,
+  embeds: [embed],
+  components: [row],
+});
 
 
 const formUrl = `https://seamuwwww.vercel.app?channelId=${channel.id}`;
