@@ -36,7 +36,7 @@ await message.channel.send({
 
     const btnHikuri = new ButtonBuilder()
       .setCustomId("skin_hikuri")
-      .setLabel("ลายเส้นฮิเคริ")
+      .setLabel("ลายเส้นฮิเคริ") 
       .setStyle(ButtonStyle.Primary);
 
     const btnSky = new ButtonBuilder()
@@ -138,7 +138,6 @@ if (userChannels.size >= 3) {
 const embed = new EmbedBuilder()
   .setTitle(`${skinName}`)
   .setColor(0x9b59b6)
-  .setDescription(extraDescription);
 
 // ปุ่มลบตั๋ว
 const deleteBtn = new ButtonBuilder()
