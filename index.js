@@ -14,11 +14,6 @@ const {
 } = require("discord.js");
 const fetch = require("node-fetch");
 const path = require("path");
-const {
-  saveAuctionData,
-  getAuctionData,
-  deleteAuctionData,
-} = require("./storage");
 require("./server");
 const client = new Client({
   intents: [
