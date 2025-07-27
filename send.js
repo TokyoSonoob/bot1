@@ -27,30 +27,31 @@ module.exports = function (client) {
           .setTitle("🖌️ รายละเอียดการสั่งสกิน")
           .setColor("#b96eff")
           .addFields(
-            { name: "👀 รูปตา", value: data.eyeType || "-", inline: true },
-            { name: "🧍‍♀️ ฟิกเกอร์", value: data.figure || "-", inline: true },
-            { name: "📦 ขนาดซัมมอน", value: data.summon || "-", inline: true },
+            { name: "Scale", value: data.summon || "-" },
+            { name: "Figura", value: data.figure || "-" },
+            { name: "รูปตาแบบ", value: data.eyeType || "-" },
 
-            { name: "🎨 สีตา", value: data.eyeColor || "-", inline: true },
-            { name: "🎨 สีขนตา", value: data.eyelashColor || "-", inline: true },
-            { name: "🎨 สีแก้ม", value: data.cheekColor || "-", inline: true },
+            { name: "สีตา", value: data.eyeColor || "-" },
+            { name: "สีขนตา", value: data.eyelashColor || "-" },
+            { name: "สีแก้ม", value: data.cheekColor || "-" },
 
-            { name: "💇‍♀️ สีผม 1", value: data.hairColor1 || "-", inline: true },
-            { name: "💇‍♀️ สีผม 2", value: data.hairColor2 || "-", inline: true },
-            { name: "✨ ไฮไลต์ 1", value: data.highlight1 || "-", inline: true },
-            { name: "✨ ไฮไลต์ 2", value: data.highlight2 || "-", inline: true },
+            { name: "สีผม 1", value: data.hairColor1 || "-" },
+            { name: "สีผม 2", value: data.hairColor2 || "-" },
+            { name: "ผมไฮไลต์ 1", value: data.highlight1 || "-" },
+            { name: "ผมไฮไลต์ 2", value: data.highlight2 || "-" },
 
-            { name: "🎨 สีผิว", value: data.skinColor || "-", inline: true },
-            { name: "🎯 สีไฝ", value: data.moleColor || "-", inline: true },
-            { name: "📍 ตำแหน่งไฝ", value: data.molePosition || "-", inline: true },
+            { name: "สีผิว", value: data.skinColor || "-" },
+            { name: "ตำแหน่งไฝ", value: data.molePosition || "-" },
+            { name: "สีไฝ", value: data.moleColor || "-" },
 
-            { name: "🎀 ลายเส้น/พร็อพ", value: data.accessory || "-", inline: true },
-            { name: "📝 รายละเอียดเพิ่มเติม", value: data.extraDetail || "-", inline: false }
+            { name: "เครื่องประดับ", value: data.accessory || "-" },
+            { name: "รายละเอียดเพิ่มเติม", value: data.extraDetail || "-" }
           )
           .setFooter({ text: "Purple Shop - สกินออเดอร์" })
           .setTimestamp();
 
         await channel.send({ embeds: [embed] });
+        await skinOrdersRef.doc(change.doc.id).delete().catch(console.error);
       }
     });
   });
