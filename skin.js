@@ -8,7 +8,8 @@ const {
   ActionRowBuilder,
   PermissionsBitField,
 } = require("discord.js");
-
+const express = require("express");
+const { db } = require("./firebase");
 module.exports = function (client) {
 
 const PREFIX = "!";
