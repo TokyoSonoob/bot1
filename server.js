@@ -1,18 +1,20 @@
 const express = require("express");
+const fetch = require("node-fetch"); // หรือใช้ built-in fetch ใน Node 18+
+
 const app = express();
-app.use(bodyParser.json());
+
+// แก้ตรงนี้ ใช้ express.json() แทน bodyParser.json()
+app.use(express.json());
 
 app.post("/skin", async (req, res) => {
   const data = req.body;
 
-  // ตัวอย่าง webhook URL ของคุณ (เปลี่ยนให้เป็นจริง)
   const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
 
   if (!webhookUrl) {
     return res.status(500).json({ error: "Missing Discord webhook URL" });
   }
 
-  // แปลงข้อมูลเป็นข้อความ embed fields
   const fields = Object.entries(data).map(([key, value]) => ({
     name: key,
     value: value || "-",
