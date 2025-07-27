@@ -31,7 +31,7 @@ const client = new Client({
 require("./money")(client);
 require("./skin")(client);
 require("./send")(client);
-
+require("./pamoon")(client);
 const imageCollectorState = new Map();
 const restrictedChannels = new Set();
 const LOG_CHANNEL_ID = "YOUR_LOG_CHANNEL_ID"; // 🔧 เปลี่ยนตรงนี้เป็น ID ห้อง log
