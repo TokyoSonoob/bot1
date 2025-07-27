@@ -1,7 +1,8 @@
 const express = require("express");
 const fetch = require("node-fetch"); // หรือใช้ built-in fetch ใน Node 18+
-
+const cors = require("cors");
 const app = express();
+app.use(cors());
 
 // แก้ตรงนี้ ใช้ express.json() แทน bodyParser.json()
 app.use(express.json());
