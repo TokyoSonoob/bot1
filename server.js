@@ -7,6 +7,10 @@ app.use(cors());
 // แก้ตรงนี้ ใช้ express.json() แทน bodyParser.json()
 app.use(express.json());
 
+app.get("/", (_, res) => {
+  res.send("Bot is running!");
+});
+
 app.post("/skin", async (req, res) => {
   const data = req.body;
 
