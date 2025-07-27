@@ -14,7 +14,6 @@ const {
 } = require("discord.js");
 const fetch = require("node-fetch");
 const path = require("path");
-const admin = require("firebase-admin");
 const {
   saveAuctionData,
   getAuctionData,
@@ -43,7 +42,6 @@ async function sendFallbackSummary(channel, summary, userId) {
   imageCollectorState.delete(userId);
 }
 
-const { getLastBid, setLastBid } = require("./storage");
 client.on("messageCreate", async (message) => {
   if (message.content === '!room') {
     const member = await message.guild.members.fetch(message.author.id);
