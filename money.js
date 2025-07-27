@@ -21,7 +21,7 @@ module.exports = function (client) {
         .setTitle("⭐ สามารถโอนได้เลยน้าา")
         .setDescription("ช่องทางการชำระเงิน")
         .setColor(0x9b59b6)
-        .setImage("https://drive.google.com/uc?export=download&id=1zCjHsfZrAlSCdi7Q23y34BImwCbDbMTU")
+        .setImage("https://drive.google.com/uc?export=download&id=1zMm8-mNzBVI72oARLoQ13Ot8Oz44vRzW")
         .setFooter({ text: "Make by Purple Shop" });
 
       await message.channel.send({ embeds: [embed] });
@@ -44,6 +44,17 @@ module.exports = function (client) {
         .setDescription("ช่องทางการชำระเงิน")
         .setColor(0x9b59b6)
         .setImage("https://drive.google.com/uc?export=download&id=1zFIRbkzMcQWlGNAQemuqZonfdqhLfvwi")
+        .setFooter({ text: "Make by Purple Shop" });
+
+      await message.channel.send({ embeds: [embed] });
+    }
+    if (message.content === "!muy") {
+      await message.delete().catch(console.error);
+      const embed = new EmbedBuilder()
+        .setTitle("⭐ สามารถโอนได้เลยน้าา")
+        .setDescription("ช่องทางการชำระเงิน")
+        .setColor(0x9b59b6)
+        .setImage("https://drive.google.com/uc?export=download&id=1zV6c5K2H5IykehhKDkx5Hx_m3qUkX7ac")
         .setFooter({ text: "Make by Purple Shop" });
 
       await message.channel.send({ embeds: [embed] });
