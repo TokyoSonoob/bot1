@@ -10,43 +10,6 @@ const {
 } = require("discord.js");
 
 module.exports = function (client) {
-const express = require("express");
-const bodyParser = require("body-parser");
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-app.use(bodyParser.json()); // รองรับ JSON
-
-app.post("/skin", async (req, res) => {
-  try {
-    const data = req.body;
-    const channelId = data.channelId;
-    if (!channelId) return res.status(400).send("Missing channelId");
-
-    const channel = await client.channels.fetch(channelId).catch(() => null);
-    if (!channel) return res.status(404).send("Channel not found");
-
-    const embed = new EmbedBuilder()
-      .setTitle("🎨 ฟอร์มสั่งสกินใหม่")
-      .setColor(0x9b59b6)
-      .setFooter({ text: "Make by Purple Shop" })
-      .setTimestamp();
-
-    for (const [key, value] of Object.entries(data)) {
-      if (key === "channelId") continue;
-      embed.addFields({ name: key, value: value || "-", inline: false });
-    }
-
-    await channel.send({ content: "📥 มีการส่งฟอร์มสั่งสกินใหม่เข้ามา!", embeds: [embed] });
-
-    res.json({ status: "success" });
-  } catch (error) {
-    console.error(error);
-    res.status(500).send("Internal server error");
-  }
-});
-
-
 
 const PREFIX = "!";
 const STAFF_ROLE_ID = "1374387525040214016";
