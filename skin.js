@@ -138,7 +138,9 @@ if (userChannels.size >= 3) {
 
 const embed = new EmbedBuilder()
   .setTitle(`${skinName}`)
-  .setColor(0x9b59b6)
+  .setColor(0x9b59b6);
+
+const formUrl = `https://seamuwwww.vercel.app?channelId=${channel.id}`;
 
 // ปุ่มลบตั๋ว
 const deleteBtn = new ButtonBuilder()
@@ -146,18 +148,20 @@ const deleteBtn = new ButtonBuilder()
   .setLabel("🗑️ ลบตั๋ว")
   .setStyle(ButtonStyle.Danger);
 
-const row = new ActionRowBuilder().addComponents(deleteBtn);
+// ปุ่มลิงก์กรอกแบบฟอร์ม
+const formBtn = new ButtonBuilder()
+  .setLabel("กรอกแบบฟอร์ม")
+  .setStyle(ButtonStyle.Link)
+  .setURL(formUrl);
+
+// รวมปุ่มทั้งสองลงในแถวเดียวกัน
+const row = new ActionRowBuilder().addComponents(deleteBtn, formBtn);
 
 await channel.send({
   content: `<@${user.id}>\n<@${pingUserId}>`,
   embeds: [embed],
   components: [row],
 });
-
-
-const formUrl = `https://seamuwwww.vercel.app?channelId=${channel.id}`;
-await channel.send(`📋 กรุณากรอกฟอร์มสั่งสกินที่นี่: ${formUrl}`);
-
 
 
 
