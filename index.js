@@ -35,7 +35,7 @@ const restrictedChannels = new Set();
 const LOG_CHANNEL_ID = "YOUR_LOG_CHANNEL_ID"; // 🔧 เปลี่ยนตรงนี้เป็น ID ห้อง log
 
 client.once("ready", () => {
-  console.log(✅ บอทออนไลน์แล้ว: ${client.user.tag});
+  console.log("✅ บอทออนไลน์แล้ว: " + client.user.tag);
 });
 async function sendFallbackSummary(channel, summary, userId) {
   await channel.send({ content: summary });
