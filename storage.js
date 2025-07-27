@@ -1,6 +1,4 @@
 const { db, admin } = require('./firebase');
-
-// ✅ บันทึกข้อมูลการประมูล
 async function saveAuctionData(channelId, data) {
   const ref = db.collection('auctions').doc(channelId);
   const doc = await ref.get();
@@ -50,40 +48,8 @@ async function deleteAuctionData(channelId) {
   }
 }
 
-// ✅ ดึงราคาประมูลล่าสุด
-async function getLastBid(channelId) {
-  const doc = await db.collection('auctions_meta').doc(channelId).get();
-  return doc.exists ? (doc.data().lastBid || 0) : 0;
-}
-
-// ✅ บันทึกราคาประมูลล่าสุด
-async function setLastBid(channelId, price) {
-  await db.collection('auctions_meta').doc(channelId).set(
-    { lastBid: price },
-    { merge: true }
-  );
-}
-
-// ✅ บันทึกชื่อ baseName ของห้อง (ครั้งที่-xxx)
-async function setBaseName(channelId, baseName) {
-  await db.collection('auctions_meta').doc(channelId).set(
-    { baseName },
-    { merge: true }
-  );
-}
-
-// ✅ ดึง baseName
-async function getBaseName(channelId) {
-  const doc = await db.collection('auctions_meta').doc(channelId).get();
-  return doc.exists ? doc.data().baseName : null;
-}
-
 module.exports = {
   saveAuctionData,
   getAuctionData,
   deleteAuctionData,
-  getLastBid,
-  setLastBid,
-  setBaseName,
-  getBaseName
 };
