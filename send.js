@@ -1,4 +1,13 @@
-const { EmbedBuilder } = require("discord.js");
+const {
+  Client,
+  GatewayIntentBits,
+  Partials,
+  EmbedBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  ActionRowBuilder,
+  PermissionsBitField,
+} = require("discord.js");
 const { getFirestore } = require("firebase-admin/firestore");
 
 module.exports = function (client) {
