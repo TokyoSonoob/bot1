@@ -26,32 +26,28 @@ module.exports = function (client) {
         const embed = new EmbedBuilder()
           .setTitle("🖌️ รายละเอียดการสั่งสกิน")
           .setColor("#b96eff")
-          .addFields(
-            { name: "Scale", value: data.summon || "-" },
-            { name: "Figura", value: data.figure || "-" },
-            { name: "รูปตาแบบ", value: data.eyeType || "-" },
+  .setDescription([
+  `**Scale** : ${data.summon || "-"}`,
+  `**Figura** : ${data.figure || "-"}`,
+  `**รูปตาแบบ** : ${data.eyeType || "-"}`,
+  `**สีตา** : ${data.eyeColor || "-"}`,
+  `**สีขนตา** : ${data.eyelashColor || "-"}`,
+  `**สีแก้ม** : ${data.cheekColor || "-"}`,
+  `**สีผม 1** : ${data.hairColor1 || "-"}`,
+  `**สีผม 2** : ${data.hairColor2 || "-"}`,
+  `**ผมไฮไลต์ 1** : ${data.highlight1 || "-"}`,
+  `**ผมไฮไลต์ 2** : ${data.highlight2 || "-"}`,
+  `**สีผิว** : ${data.skinColor || "-"}`,
+  `**ตำแหน่งไฝ** : ${data.molePosition || "-"}`,
+  `**สีไฝ** : ${data.moleColor || "-"}`,
+  `**เครื่องประดับ** : ${data.accessory || "-"}`,
+  `**รายละเอียดเพิ่มเติม** : ${data.extraDetail || "-"}`
+].join("\n"))
 
-            { name: "สีตา", value: data.eyeColor || "-" },
-            { name: "สีขนตา", value: data.eyelashColor || "-" },
-            { name: "สีแก้ม", value: data.cheekColor || "-" },
-
-            { name: "สีผม 1", value: data.hairColor1 || "-" },
-            { name: "สีผม 2", value: data.hairColor2 || "-" },
-            { name: "ผมไฮไลต์ 1", value: data.highlight1 || "-" },
-            { name: "ผมไฮไลต์ 2", value: data.highlight2 || "-" },
-
-            { name: "สีผิว", value: data.skinColor || "-" },
-            { name: "ตำแหน่งไฝ", value: data.molePosition || "-" },
-            { name: "สีไฝ", value: data.moleColor || "-" },
-
-            { name: "เครื่องประดับ", value: data.accessory || "-" },
-            { name: "รายละเอียดเพิ่มเติม", value: data.extraDetail || "-" }
-          )
           .setFooter({ text: "Purple Shop - สกินออเดอร์" })
           .setTimestamp();
 
         await channel.send({ embeds: [embed] });
-        await skinOrdersRef.doc(change.doc.id).delete().catch(console.error);
       }
     });
   });
