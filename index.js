@@ -15,13 +15,6 @@ const {
 const fetch = require("node-fetch");
 const path = require("path");
 const admin = require("firebase-admin");
-const serviceAccount = require("./firebase-key.json");
-
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-});
-const db = admin.firestore();
-
 const {
   saveAuctionData,
   getAuctionData,
@@ -36,18 +29,20 @@ const client = new Client({
   ],
 });
 require("./money")(client);
+require("./skin")(client);
 
 const imageCollectorState = new Map();
 const restrictedChannels = new Set();
 const LOG_CHANNEL_ID = "YOUR_LOG_CHANNEL_ID"; // 🔧 เปลี่ยนตรงนี้เป็น ID ห้อง log
 
 client.once("ready", () => {
-  console.log(`✅ บอทออนไลน์แล้ว: ${client.user.tag}`);
+  console.log(✅ บอทออนไลน์แล้ว: ${client.user.tag});
 });
 async function sendFallbackSummary(channel, summary, userId) {
   await channel.send({ content: summary });
   imageCollectorState.delete(userId);
 }
+
 const { getLastBid, setLastBid } = require("./storage");
 client.on("messageCreate", async (message) => {
   if (message.content === '!room') {
