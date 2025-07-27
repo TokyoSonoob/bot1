@@ -134,21 +134,6 @@ if (userChannels.size >= 3) {
         },
       ],
     });
-    const skinOrdersRef = db.collection("skinOrders");
-const querySnapshot = await skinOrdersRef.where("id", "==", channel.id).get();
-
-let extraDescription = "";
-
-if (!querySnapshot.empty) {
-  querySnapshot.forEach((doc) => {
-    const order = doc.data();
-
-    // สมมติ order มี userId, skin, createdAt
-    extraDescription += `\n- ผู้เปิดตั๋ว: <@${order.userId}>\n- ลายเส้น: ${order.skin}\n- เปิดเมื่อ: ${order.createdAt?.toDate().toLocaleString() || "-"}\n`;
-  });
-} else {
-  extraDescription = "ไม่พบข้อมูลในฐานข้อมูล skinOrders สำหรับห้องนี้";
-}
 
 const embed = new EmbedBuilder()
   .setTitle(`${skinName}`)
