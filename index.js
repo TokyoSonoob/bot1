@@ -411,11 +411,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 
   if (interaction.isModalSubmit() && interaction.customId === "auction_form") {
-    const filter = (m) => m.author.id === interaction.user.id;
-    const collector = interaction.channel.createMessageCollector({
-      filter,
-      time: 30 * 60 * 1000,
-    });
+  const filter = (m) => m.author.id === interaction.user.id;
+  const collector = interaction.channel.createMessageCollector({
+    filter,
+    time: 30 * 60 * 1000,
+  });
+
+  // 👇 ลบข้อมูลเก่าก่อนบันทึกใหม่
+  await deleteAuctionData(interaction.channel.id);
     const startPrice = interaction.fields.getTextInputValue("start_price");
     const bidStep = interaction.fields.getTextInputValue("bid_step");
     const targetPrice = interaction.fields.getTextInputValue("target_price");
