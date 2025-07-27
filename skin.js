@@ -52,10 +52,6 @@ const PREFIX = "!";
 const STAFF_ROLE_ID = "1374387525040214016";
 const CATEGORY_ID = "1374396536951406683"; // หมวดหมู่ถาวร
 
-client.once("ready", () => {
-  console.log(`✅ บอททำงานแล้วในชื่อ ${client.user.tag}`);
-});
-
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
 
@@ -216,11 +212,4 @@ await channel.send(`📋 กรุณากรอกฟอร์มสั่ง�
   }
 });
 
-client.once("ready", () => {
-  console.log(`✅ บอททำงานแล้วในชื่อ ${client.user.tag}`);
-
-  app.listen(PORT, () => {
-    console.log(`🌐 Express server listening on port ${PORT}`);
-  });
-});
     };
