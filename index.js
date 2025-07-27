@@ -14,6 +14,12 @@ const {
 } = require("discord.js");
 const fetch = require("node-fetch");
 const path = require("path");
+const admin = require("firebase-admin");
+const {
+  saveAuctionData,
+  getAuctionData,
+  deleteAuctionData,
+} = require("./storage");
 require("./server");
 const client = new Client({
   intents: [
@@ -36,7 +42,7 @@ async function sendFallbackSummary(channel, summary, userId) {
   await channel.send({ content: summary });
   imageCollectorState.delete(userId);
 }
-
+const { getLastBid, setLastBid } = require("./storage");
 client.on("messageCreate", async (message) => {
   if (message.content === '!room') {
     const member = await message.guild.members.fetch(message.author.id);
