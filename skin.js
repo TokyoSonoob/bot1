@@ -152,7 +152,7 @@ module.exports = function (client) {
       });
 
       await channel.send({
-        content: `<@${user.id}> \n# สามารถบรีฟงานได้เลยนะค้าบ\n## อยากจะเอาแบบไหน\n## มีแบบไหม\n## ส่งมาได้เลยน้าาาาาา`,
+        content: `<@${user.id}> \n# สามารถบรีฟงานได้เลยนะ\n## อยากจะเอาแบบไหน\n## มีแบบไหม\n## ส่งมาได้เลยน้าาาาาา`,
       });
 
       await interaction.reply({
