@@ -66,6 +66,7 @@ module.exports = function (client) {
       if (!owned) return; // ไม่มีสิทธิ์ ไม่แจ้งเตือน
 
       const customIdToRemove = owned[0];
+
       const recentMessages = await message.channel.messages.fetch({ limit: 10 });
       const botMessage = recentMessages.find(
         (msg) => msg.author.id === client.user.id && msg.components.length > 0
@@ -78,24 +79,8 @@ module.exports = function (client) {
         await botMessage.edit({ components: [newRow] });
       }
 
-      try {
-        const formChannel = await client.channels.fetch(FORM_CHANNEL_ID);
-        if (formChannel && formChannel.isTextBased()) {
-          const formMessages = await formChannel.messages.fetch({ limit: 50 });
-          const userMessages = formMessages.filter(
-            (msg) => msg.author.id === client.user.id && msg.content.includes(`<@${userId}>`)
-          );
-
-          for (const msg of userMessages.values()) {
-            await msg.delete().catch(() => {});
-          }
-        }
-      } catch (err) {
-        console.error("ลบข้อความห้องแบบฟอร์มผิดพลาด:", err);
-      }
-
-      await message.delete().catch(() => {}); // ลบคำสั่งผู้ใช้เลย
-      // ไม่ส่งข้อความตอบกลับใด ๆ
+      // ลบคำสั่งผู้ใช้โดยไม่แจ้งเตือน
+      await message.delete().catch(() => {});
     }
 
     if (command === "open") {
@@ -103,35 +88,35 @@ module.exports = function (client) {
       const owned = Object.entries(OWNER_IDS).find(([, uid]) => uid === userId);
       if (!owned) return; // ไม่มีสิทธิ์ ไม่แจ้งเตือน
 
-      const channel = message.channel;
+      const customIdToAdd = owned[0];
+      const labelMap = {
+        skin_hikuri: "ลายเส้นฮิเคริ",
+        skin_sky: "ลายเส้นสกาย",
+        skin_mui: "ลายเส้นมุย",
+        skin_khim: "ลายเส้นขิม",
+        skin_nj: "ลายเส้น NJ",
+      };
 
-      await channel.permissionOverwrites.edit(userId, {
-        ViewChannel: true,
-        SendMessages: true,
-      });
+      const recentMessages = await message.channel.messages.fetch({ limit: 10 });
+      const botMessage = recentMessages.find(
+        (msg) => msg.author.id === client.user.id && msg.components.length > 0
+      );
 
-      const embed = new EmbedBuilder().setTitle(`กลับมาเปิดใหม่`).setColor(0x9b59b6);
+      if (botMessage) {
+        const currentRow = botMessage.components[0];
+        if (!currentRow.components.some((btn) => btn.customId === customIdToAdd)) {
+          const newButton = new ButtonBuilder()
+            .setCustomId(customIdToAdd)
+            .setLabel(labelMap[customIdToAdd] || "ลายเส้น")
+            .setStyle(ButtonStyle.Primary);
 
-      const deleteBtn = new ButtonBuilder()
-        .setCustomId("delete_ticket")
-        .setLabel("🗑️ ลบตั๋ว")
-        .setStyle(ButtonStyle.Danger);
+          const newRow = new ActionRowBuilder().addComponents([...currentRow.components, newButton]);
+          await botMessage.edit({ components: [newRow] });
+        }
+      }
 
-      const formBtn = new ButtonBuilder()
-        .setLabel("กรอกแบบฟอร์ม")
-        .setStyle(ButtonStyle.Link)
-        .setURL(`https://seamuwwww.vercel.app?channelId=${channel.id}`);
-
-      const row = new ActionRowBuilder().addComponents(deleteBtn, formBtn);
-
-      await channel.send({
-        content: `<@${userId}> กลับมาใช้งานอีกครั้ง`,
-        embeds: [embed],
-        components: [row],
-      });
-
-      await message.delete().catch(() => {}); // ลบคำสั่งผู้ใช้เลย
-      // ไม่ส่งข้อความตอบกลับใด ๆ
+      // ลบคำสั่งผู้ใช้โดยไม่แจ้งเตือน
+      await message.delete().catch(() => {});
     }
   });
 
