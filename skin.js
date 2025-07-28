@@ -4,7 +4,7 @@ const {
   Partials,
   EmbedBuilder,
   ButtonBuilder,
-  ButtonStyle,
+  ButtonStyle,  
   ActionRowBuilder,
   PermissionsBitField,
 } = require("discord.js");
@@ -57,16 +57,13 @@ module.exports = function (client) {
       );
 
       await message.channel.send({ embeds: [embed], components: [row] });
-      message.delete().catch(console.error);
+      await message.delete().catch(() => {});
     }
 
     if (command === "close") {
       const userId = message.author.id;
       const owned = Object.entries(OWNER_IDS).find(([, uid]) => uid === userId);
-
-      if (!owned) {
-        return message.reply("❌ คุณไม่มีสิทธิ์ในการใช้คำสั่งนี้");
-      }
+      if (!owned) return; // ไม่มีสิทธิ์ ไม่แจ้งเตือน
 
       const customIdToRemove = owned[0];
       const recentMessages = await message.channel.messages.fetch({ limit: 10 });
@@ -76,10 +73,7 @@ module.exports = function (client) {
 
       if (botMessage) {
         const currentRow = botMessage.components[0];
-        const newButtons = currentRow.components.filter(
-          (btn) => btn.customId !== customIdToRemove
-        );
-
+        const newButtons = currentRow.components.filter((btn) => btn.customId !== customIdToRemove);
         const newRow = new ActionRowBuilder().addComponents(newButtons);
         await botMessage.edit({ components: [newRow] });
       }
@@ -100,16 +94,14 @@ module.exports = function (client) {
         console.error("ลบข้อความห้องแบบฟอร์มผิดพลาด:", err);
       }
 
-      return message.reply("✅ ลบปุ่มของคุณและข้อความในห้องแบบฟอร์มเรียบร้อยแล้ว");
+      await message.delete().catch(() => {}); // ลบคำสั่งผู้ใช้เลย
+      // ไม่ส่งข้อความตอบกลับใด ๆ
     }
 
     if (command === "open") {
       const userId = message.author.id;
       const owned = Object.entries(OWNER_IDS).find(([, uid]) => uid === userId);
-
-      if (!owned) {
-        return message.reply("❌ คุณไม่มีสิทธิ์ในการใช้คำสั่งนี้");
-      }
+      if (!owned) return; // ไม่มีสิทธิ์ ไม่แจ้งเตือน
 
       const channel = message.channel;
 
@@ -138,7 +130,8 @@ module.exports = function (client) {
         components: [row],
       });
 
-      await message.reply("✅ เปิดสิทธิ์และเพิ่มปุ่มกลับเรียบร้อยแล้ว");
+      await message.delete().catch(() => {}); // ลบคำสั่งผู้ใช้เลย
+      // ไม่ส่งข้อความตอบกลับใด ๆ
     }
   });
 
@@ -239,13 +232,13 @@ module.exports = function (client) {
     }
 
     if (interaction.customId === "delete_ticket") {
-      await interaction.reply({
-        content: "⏳ กำลังลบตั๋วใน 10 วินาที...",
-        ephemeral: true,
-      });
-      setTimeout(() => {
-        interaction.channel.delete().catch(console.error);
-      }, 10000);
+      // ลบทันทีโดยไม่แจ้งเตือน
+      try {
+        await interaction.deferUpdate(); // ตอบรับ interaction แบบไม่แจ้งเตือน
+        await interaction.channel.delete().catch(console.error);
+      } catch (err) {
+        console.error(err);
+      }
     }
   });
 };
