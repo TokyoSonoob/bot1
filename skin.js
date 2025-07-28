@@ -15,7 +15,7 @@ module.exports = function (client) {
   const PREFIX = "!";
   const STAFF_ROLE_ID = "1374387525040214016";
   const CATEGORY_ID = "1374396536951406683";
-  const FORM_CHANNEL_ID = "1374427289948786759"; // ห้องแบบฟอร์ม
+  const FORM_CHANNEL_ID = "1374427289948786759";
 
   const OWNER_IDS = {
     skin_hikuri: "1134464935448023152",
@@ -27,8 +27,12 @@ module.exports = function (client) {
 
   client.on("messageCreate", async (message) => {
     if (message.author.bot) return;
+    if (!message.content.startsWith(PREFIX)) return;
 
-    if (message.content.toLowerCase() === `${PREFIX}skin`) {
+    const args = message.content.slice(PREFIX.length).trim().split(/ +/);
+    const command = args.shift().toLowerCase();
+
+    if (command === "skin") {
       if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
         return message.reply("❌ เฉพาะแอดมินเท่านั้นที่ใช้คำสั่งนี้ได้");
       }
@@ -44,45 +48,19 @@ module.exports = function (client) {
         .setImage("https://media.tenor.com/S4MdyoCR3scAAAAM/oblakao.gif")
         .setFooter({ text: "Make by Purple Shop" });
 
-      const btnHikuri = new ButtonBuilder()
-        .setCustomId("skin_hikuri")
-        .setLabel("ลายเส้นฮิเคริ")
-        .setStyle(ButtonStyle.Primary);
-
-      const btnSky = new ButtonBuilder()
-        .setCustomId("skin_sky")
-        .setLabel("ลายเส้นสกาย")
-        .setStyle(ButtonStyle.Primary);
-
-      const btnMui = new ButtonBuilder()
-        .setCustomId("skin_mui")
-        .setLabel("ลายเส้นมุย")
-        .setStyle(ButtonStyle.Primary);
-
-      const btnKhim = new ButtonBuilder()
-        .setCustomId("skin_khim")
-        .setLabel("ลายเส้นขิม")
-        .setStyle(ButtonStyle.Primary);
-
-      const btnNj = new ButtonBuilder()
-        .setCustomId("skin_nj")
-        .setLabel("ลายเส้น NJ")
-        .setStyle(ButtonStyle.Primary);
-
       const row = new ActionRowBuilder().addComponents(
-        btnHikuri,
-        btnSky,
-        btnMui,
-        btnKhim,
-        btnNj
+        new ButtonBuilder().setCustomId("skin_hikuri").setLabel("ลายเส้นฮิเคริ").setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId("skin_sky").setLabel("ลายเส้นสกาย").setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId("skin_mui").setLabel("ลายเส้นมุย").setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId("skin_khim").setLabel("ลายเส้นขิม").setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId("skin_nj").setLabel("ลายเส้น NJ").setStyle(ButtonStyle.Primary)
       );
 
       await message.channel.send({ embeds: [embed], components: [row] });
       message.delete().catch(console.error);
     }
 
-    // ✅ ฟีเจอร์ !close
-    if (message.content.toLowerCase() === `${PREFIX}close`) {
+    if (command === "close") {
       const userId = message.author.id;
       const owned = Object.entries(OWNER_IDS).find(([, uid]) => uid === userId);
 
@@ -90,9 +68,7 @@ module.exports = function (client) {
         return message.reply("❌ คุณไม่มีสิทธิ์ในการใช้คำสั่งนี้");
       }
 
-      const customIdToRemove = owned[0]; // เช่น 'skin_nj'
-
-      // ลบปุ่มของเจ้าตัวใน message ปัจจุบัน
+      const customIdToRemove = owned[0];
       const recentMessages = await message.channel.messages.fetch({ limit: 10 });
       const botMessage = recentMessages.find(
         (msg) => msg.author.id === client.user.id && msg.components.length > 0
@@ -108,15 +84,12 @@ module.exports = function (client) {
         await botMessage.edit({ components: [newRow] });
       }
 
-      // ลบข้อความที่แท็กเขาในห้องแบบฟอร์ม
       try {
         const formChannel = await client.channels.fetch(FORM_CHANNEL_ID);
         if (formChannel && formChannel.isTextBased()) {
           const formMessages = await formChannel.messages.fetch({ limit: 50 });
           const userMessages = formMessages.filter(
-            (msg) =>
-              msg.author.id === client.user.id &&
-              msg.content.includes(`<@${userId}>`)
+            (msg) => msg.author.id === client.user.id && msg.content.includes(`<@${userId}>`)
           );
 
           for (const msg of userMessages.values()) {
@@ -129,40 +102,44 @@ module.exports = function (client) {
 
       return message.reply("✅ ลบปุ่มของคุณและข้อความในห้องแบบฟอร์มเรียบร้อยแล้ว");
     }
+
     if (command === "open") {
-    // เปิดสิทธิ์ของผู้ใช้คนนั้น และใส่ปุ่มกลับ
-    const userId = message.author.id;
+      const userId = message.author.id;
+      const owned = Object.entries(OWNER_IDS).find(([, uid]) => uid === userId);
 
-    await channel.permissionOverwrites.edit(userId, {
-      ViewChannel: true,
-      SendMessages: true,
-    });
+      if (!owned) {
+        return message.reply("❌ คุณไม่มีสิทธิ์ในการใช้คำสั่งนี้");
+      }
 
-    // เพิ่มปุ่มใหม่
-    const embed = new EmbedBuilder()
-      .setTitle(`กลับมาเปิดใหม่`)
-      .setColor(0x9b59b6);
+      const channel = message.channel;
 
-    const deleteBtn = new ButtonBuilder()
-      .setCustomId("delete_ticket")
-      .setLabel("🗑️ ลบตั๋ว")
-      .setStyle(ButtonStyle.Danger);
+      await channel.permissionOverwrites.edit(userId, {
+        ViewChannel: true,
+        SendMessages: true,
+      });
 
-    const formBtn = new ButtonBuilder()
-      .setLabel("กรอกแบบฟอร์ม")
-      .setStyle(ButtonStyle.Link)
-      .setURL(`https://seamuwwww.vercel.app?channelId=${channel.id}`);
+      const embed = new EmbedBuilder().setTitle(`กลับมาเปิดใหม่`).setColor(0x9b59b6);
 
-    const row = new ActionRowBuilder().addComponents(deleteBtn, formBtn);
+      const deleteBtn = new ButtonBuilder()
+        .setCustomId("delete_ticket")
+        .setLabel("🗑️ ลบตั๋ว")
+        .setStyle(ButtonStyle.Danger);
 
-    await channel.send({
-      content: `<@${userId}> กลับมาใช้งานอีกครั้ง`,
-      embeds: [embed],
-      components: [row],
-    });
+      const formBtn = new ButtonBuilder()
+        .setLabel("กรอกแบบฟอร์ม")
+        .setStyle(ButtonStyle.Link)
+        .setURL(`https://seamuwwww.vercel.app?channelId=${channel.id}`);
 
-    await message.reply("✅ เปิดสิทธิ์และเพิ่มปุ่มกลับเรียบร้อยแล้ว");
-  }
+      const row = new ActionRowBuilder().addComponents(deleteBtn, formBtn);
+
+      await channel.send({
+        content: `<@${userId}> กลับมาใช้งานอีกครั้ง`,
+        embeds: [embed],
+        components: [row],
+      });
+
+      await message.reply("✅ เปิดสิทธิ์และเพิ่มปุ่มกลับเรียบร้อยแล้ว");
+    }
   });
 
   client.on("interactionCreate", async (interaction) => {
@@ -228,25 +205,13 @@ module.exports = function (client) {
         type: 0,
         parent: CATEGORY_ID,
         permissionOverwrites: [
-          {
-            id: guild.id,
-            deny: [PermissionsBitField.Flags.ViewChannel],
-          },
-          {
-            id: user.id,
-            allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages],
-          },
-          {
-            id: STAFF_ROLE_ID,
-            allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages],
-          },
+          { id: guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
+          { id: user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages] },
+          { id: STAFF_ROLE_ID, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages] },
         ],
       });
 
-      const embed = new EmbedBuilder()
-        .setTitle(`${skinName}`)
-        .setColor(0x9b59b6);
-
+      const embed = new EmbedBuilder().setTitle(`${skinName}`).setColor(0x9b59b6);
       const formUrl = `https://seamuwwww.vercel.app?channelId=${channel.id}`;
 
       const deleteBtn = new ButtonBuilder()
