@@ -194,7 +194,7 @@ module.exports = function (client) {
 
       const deleteBtn = new ButtonBuilder()
         .setCustomId("delete_ticket")
-        .setLabel("🗑️ ลบตั๋ว")
+        .setLabel("ลบตั๋ว")
         .setStyle(ButtonStyle.Danger);
 
       const formBtn = new ButtonBuilder()
