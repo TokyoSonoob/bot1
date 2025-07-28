@@ -129,6 +129,40 @@ module.exports = function (client) {
 
       return message.reply("✅ ลบปุ่มของคุณและข้อความในห้องแบบฟอร์มเรียบร้อยแล้ว");
     }
+    if (command === "open") {
+    // เปิดสิทธิ์ของผู้ใช้คนนั้น และใส่ปุ่มกลับ
+    const userId = message.author.id;
+
+    await channel.permissionOverwrites.edit(userId, {
+      ViewChannel: true,
+      SendMessages: true,
+    });
+
+    // เพิ่มปุ่มใหม่
+    const embed = new EmbedBuilder()
+      .setTitle(`กลับมาเปิดใหม่`)
+      .setColor(0x9b59b6);
+
+    const deleteBtn = new ButtonBuilder()
+      .setCustomId("delete_ticket")
+      .setLabel("🗑️ ลบตั๋ว")
+      .setStyle(ButtonStyle.Danger);
+
+    const formBtn = new ButtonBuilder()
+      .setLabel("กรอกแบบฟอร์ม")
+      .setStyle(ButtonStyle.Link)
+      .setURL(`https://seamuwwww.vercel.app?channelId=${channel.id}`);
+
+    const row = new ActionRowBuilder().addComponents(deleteBtn, formBtn);
+
+    await channel.send({
+      content: `<@${userId}> กลับมาใช้งานอีกครั้ง`,
+      embeds: [embed],
+      components: [row],
+    });
+
+    await message.reply("✅ เปิดสิทธิ์และเพิ่มปุ่มกลับเรียบร้อยแล้ว");
+  }
   });
 
   client.on("interactionCreate", async (interaction) => {
