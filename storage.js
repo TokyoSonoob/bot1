@@ -21,8 +21,6 @@ async function saveAuctionData(channelId, data) {
     await ref.update(updates);
   } else {
     await ref.set({
-      textEntries: data.textEntries || [],
-      imageUrls: data.imageUrls || [],
       summary: data.summary || ''
     });
   }
