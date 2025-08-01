@@ -205,8 +205,8 @@ const scheduleAutoPost = () => {
     const minutes = now.getMinutes();
     const day = now.getDay();
 
-    const isTargetDay = [1, 3, 5].includes(day); // จันทร์ พุธ ศุกร์
-    const isTargetTime = hours === 15 && minutes === 1;
+    const isTargetDay = [1, 3, 5].includes(day);
+    const isTargetTime = hours === 19 && minutes === 0;
 
     if (!isTargetDay || !isTargetTime) return;
 
@@ -648,7 +648,7 @@ await admin.firestore().collection("auction_records").doc(channelId).set({
 ## กฎ : ${rules}
 ## ปิดเวลา 20:00 น.
 ## วันที่ : รอคิวก่อน
-||everyone||`;
+||@everyone||`;
 
     if (!globalThis.lastFullSummary) globalThis.lastFullSummary = {};
     globalThis.lastFullSummary[interaction.channel.id] = fullSummary;
