@@ -12,6 +12,7 @@ const {
   TextInputStyle,
   ActionRowBuilder: ModalRowBuilder,
 } = require("discord.js");
+const { TOKEN } = require("./token");
 const fetch = require("node-fetch");
 const path = require("path");
 const admin = require("firebase-admin");
@@ -34,11 +35,259 @@ require("./send")(client);
 require("./pamoon")(client);
 const imageCollectorState = new Map();
 const restrictedChannels = new Set();
-const LOG_CHANNEL_ID = "YOUR_LOG_CHANNEL_ID"; // 🔧 เปลี่ยนตรงนี้เป็น ID ห้อง log
+async function getAttachmentsFromPermaLink(permaLink) {
+  const match = permaLink.match(
+    /https:\/\/discord\.com\/channels\/(\d+)\/(\d+)\/(\d+)/
+  );
+  if (!match) return [];
+
+  const [, , channelId, messageId] = match;
+
+  const res = await fetch(
+    `https://discord.com/api/v10/channels/${channelId}/messages/${messageId}`,
+    {
+      headers: {
+        Authorization: `Bot ${TOKEN}`,
+      },
+    }
+  );
+
+  if (!res.ok) {
+    console.warn("❌ ดึงข้อความจาก permaLink ไม่ได้:", await res.text());
+    return [];
+  }
+
+  const msgData = await res.json();
+  return msgData.attachments || [];
+}
+
+
+async function sendAuctionSummary(guild, doc, parentId) {
+  const data = doc.data();
+  let summary = data.summary || "⚠️ ไม่มีสรุป";
+
+  // เพิ่มวันพรุ่งนี้แทน "## วันที่ : รอคิวก่อน"
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const formattedDate = tomorrow.toLocaleDateString("th-TH", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+  const finalSummary = summary.replace(
+    "## วันที่ : รอคิวก่อน",
+    `## วันที่ : ${formattedDate}`,
+  );
+
+  // โหลดภาพจาก permaLink ถ้ามี
+  const imageFiles = [];
+  if (data.permaLink) {
+    const attachments = await getAttachmentsFromPermaLink(data.permaLink);
+    for (const file of attachments) {
+      try {
+        const res = await fetch(file.url);
+        const buffer = await res.buffer();
+        imageFiles.push({ attachment: buffer, name: file.filename });
+      } catch (err) {
+        console.warn("⚠️ โหลดรูปจาก permaLink ไม่สำเร็จ:", err.message);
+      }
+    }
+  }
+
+  const channelName = data.roomName || `ครั้งที่-${doc.id}`;
+
+  // สร้างห้องใหม่ในหมวดหมู่ public
+  const publicChannel = await guild.channels.create({
+    name: channelName,
+    type: 0, // GuildText
+    parent: parentId,
+    permissionOverwrites: [
+      {
+        id: guild.roles.everyone,
+        allow: [
+          PermissionsBitField.Flags.ViewChannel,
+          PermissionsBitField.Flags.ReadMessageHistory,
+        ],
+      },
+      {
+        id: guild.client.user.id,
+        allow: [
+          PermissionsBitField.Flags.ViewChannel,
+          PermissionsBitField.Flags.SendMessages,
+          PermissionsBitField.Flags.ManageChannels,
+        ],
+      },
+    ],
+  });
+
+  // ส่งข้อความสรุปพร้อมรูป (ถ้ามี)
+  await publicChannel.send({
+    content: finalSummary,
+    files: imageFiles.length > 0 ? imageFiles : undefined,
+  });
+
+  // ส่งปุ่ม "ปิดห้อง"
+  const adminRow = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`close_public_${publicChannel.id}`)
+      .setLabel("🔴 ปิดห้อง")
+      .setStyle(ButtonStyle.Danger),
+  );
+
+  await publicChannel.send({
+    content: " ",
+    components: [adminRow],
+  });
+
+  // บันทึก ID ห้องสาธารณะกลับเข้า Firestore
+  await admin.firestore().collection("auction_records").doc(doc.id).update({
+    publicChannelId: publicChannel.id,
+  });
+
+  console.log(`✅ ส่งข้อมูลไปยังห้อง ${channelName} และเซฟ publicChannelId แล้ว`);
+}
+
+async function sendAuctionSummariesBatch(guild, maxRooms = 5) {
+  const parentId = "1375026841114509332"; // หมวดหมู่ public
+
+  // ตรวจสอบจำนวนห้องในหมวดหมู่
+  const existingChannels = guild.channels.cache.filter(
+    (ch) => ch.parentId === parentId
+  );
+  if (existingChannels.size >= maxRooms) {
+    console.log(`⚠️ มีห้องในหมวด public ถึงจำนวนสูงสุด (${maxRooms}) แล้ว`);
+    return;
+  }
+
+  // ดึงข้อมูลที่ยังไม่ได้ส่ง publicChannel
+  const snapshot = await admin.firestore().collection("auction_records")
+    .where("publicChannelId", "==", null)
+    .orderBy("date", "asc")
+    .get();
+
+  if (snapshot.empty) {
+    console.log("⚠️ ไม่มีข้อมูลประมูลที่ยังไม่ได้สร้างห้อง");
+    return;
+  }
+
+  const dateCount = {};
+
+  for (const doc of snapshot.docs) {
+    const data = doc.data();
+
+    // แปลง Timestamp Firestore เป็น yyyy-mm-dd
+    const date = data.date?.toDate?.();
+    if (!date) continue;
+    const dateKey = date.toISOString().split("T")[0];
+
+    if (!dateCount[dateKey]) dateCount[dateKey] = 0;
+    if (dateCount[dateKey] >= 5) continue; // ข้ามถ้าเกิน 5 คนในวันเดียวกัน
+
+    if (
+      guild.channels.cache.filter(ch => ch.parentId === parentId).size >= maxRooms
+    ) {
+      console.log(`⚠️ ห้องในหมวด public ถึงจำนวนสูงสุด (${maxRooms}) แล้ว`);
+      break;
+    }
+
+    await sendAuctionSummary(guild, doc, parentId);
+    dateCount[dateKey]++;
+  }
+}
+
+
+
+
+
+const scheduleAutoPost = () => {
+  setInterval(async () => {
+    const now = new Date();
+    const hours = now.getHours();
+    const minutes = now.getMinutes();
+    const day = now.getDay();
+
+    const isTargetDay = [1, 3, 5].includes(day); // จันทร์ พุธ ศุกร์
+    const isTargetTime = hours === 15 && minutes === 1;
+
+    if (!isTargetDay || !isTargetTime) return;
+
+    try {
+      const guild = client.guilds.cache.first();
+      if (!guild) {
+        console.warn("❌ ไม่พบ guild ที่บอทอยู่");
+        return;
+      }
+
+      const categoryId = "1375026841114509332";
+      const category = await guild.channels.fetch(categoryId);
+      if (!category) {
+        console.warn("❌ ไม่พบหมวดหมู่ public");
+        return;
+      }
+
+      const channelsInCategory = guild.channels.cache.filter(
+        (c) => c.parentId === categoryId && c.type === 0
+      );
+
+      // ดึงข้อมูลที่ publicChannelId === null ทั้งหมด และเรียงจากล่าสุดไปเก่าสุด
+      const snapshot = await admin.firestore().collection("auction_records")
+        .where("publicChannelId", "==", null)
+        .orderBy("date", "desc")
+        .get();
+
+      if (snapshot.empty) {
+        console.log("✅ ไม่มีข้อมูลรอส่ง public แล้ว");
+        return;
+      }
+
+      // ดึงเอกสารมาเป็น array แล้วเรียงตามตัวเลขจากชื่อ roomName เช่น "ครั้งที่-12"
+      const docsSorted = snapshot.docs
+        .map(doc => {
+          const data = doc.data();
+          const match = data.roomName?.match(/ครั้งที่-(\d+)/);
+          const count = match ? parseInt(match[1]) : Infinity;
+          return { doc, count };
+        })
+        .filter(d => d.count !== Infinity)
+        .sort((a, b) => a.count - b.count);
+
+      if (docsSorted.length === 0) {
+        console.log("⚠️ ไม่มีข้อมูลที่มี roomName ถูกต้อง");
+        return;
+      }
+
+      // Loop ส่งทีละรายการ โดยหยุดถ้าในหมวดหมู่เต็ม 7 ห้องแล้ว
+      for (const item of docsSorted) {
+  if (channelsInCategory.size >= 7) {
+    console.log(`⚠️ มีห้องในหมวดหมู่ ${categoryId} เกิน 7 ห้องแล้ว งดส่งข้อมูลเพิ่ม`);
+    break;
+  }
+        const doc = item.doc;
+        const data = doc.data();
+
+        // ส่งข้อมูลโดยใช้ sendAuctionSummary และส่ง userId เป็น ownerId หรือ fallback
+        const fakeUserId = data.ownerId || client.user.id;
+
+        // ส่ง
+         await sendAuctionSummary(guild, item.doc, categoryId);
+
+        // อัปเดต channelsInCategory ให้รู้ว่ามีห้องเพิ่มขึ้น (ต้อง fetch ใหม่ หรือจำลอง)
+         channelsInCategory.set(item.doc.id, { id: item.doc.id });
+      }
+
+    } catch (err) {
+      console.error("❌ ส่งข้อมูลอัตโนมัติล้มเหลว:", err);
+    }
+  }, 60 * 1000); // ตรวจสอบทุก 1 นาที
+};
+
+
 
 client.once("ready", () => {
   console.log(`✅ บอทออนไลน์แล้ว: ${client.user.tag}`);
+  scheduleAutoPost();
 });
+
 async function sendFallbackSummary(channel, summary, userId) {
   await channel.send({ content: summary });
   imageCollectorState.delete(userId);
@@ -98,9 +347,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
   if (interaction.isButton()) {
     if (interaction.customId === "open_room") {
-      const parentId = "1387466735619412030"; // ใส่ Parent ID จริง
-
-      // 🔥 1. ดึงตัวเลขล่าสุดจาก Firebase
+      const parentId = "1387466735619412030";
       const counterRef = admin
         .firestore()
         .collection("auction_counters")
@@ -121,7 +368,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         .toLowerCase()
         .replace(/[^a-zA-Z0-9ก-๙\-]/g, "");
 
-      // 🏗️ สร้างห้องใหม่
       await interaction.reply({
         content: `✅ สร้างห้องส่วนตัวของคุณแล้ว`,
         flags: 1 << 6,
@@ -155,16 +401,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
         ],
       });
 
-      // ✅ บันทึก baseName หลังสร้างห้อง
-      await admin.firestore().collection("auctions_meta").doc(channel.id).set({
-        baseName: baseName,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
-
       // ✅ ส่ง Embed + ปุ่ม
       const embed = new EmbedBuilder()
         .setTitle("📋 กรอกข้อมูลได้เลยย")
-        .setDescription("<@everyone> กรุณากรอกข้อมูลให้ครบถ้วนตามที่ระบบกำหนด")
+        .setDescription("กรุณากรอกข้อมูลให้ครบถ้วนตามที่ระบบกำหนด")
         .setColor(0x9b59b6);
 
       const adminRow = new ActionRowBuilder().addComponents(
@@ -201,6 +441,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
         content: "🗑️ ลบห้องเรียบร้อย...",
         flags: 1 << 6,
       });
+      const channelId = interaction.channel.id;
+      await admin.firestore().collection("auction_records").doc(channelId).delete().catch(console.warn);
       await interaction.channel.delete();
     }
 
@@ -250,108 +492,56 @@ client.on(Events.InteractionCreate, async (interaction) => {
       await interaction.showModal(modal);
     }
 
-    if (interaction.customId === "submit_info") {
-      await interaction.deferReply();
 
-      const member = await guild.members.fetch(interaction.user.id);
-      if (!member.permissions.has(PermissionsBitField.Flags.ManageChannels)) {
-        return interaction.editReply({
-          content: "❌ คุณไม่มีสิทธิ์ส่งข้อมูลนี้",
-        });
-      }
+  if (!interaction.isButton()) return;
 
-      const storedData = await getAuctionData(interaction.channel.id);
-      const fallbackSummary =
-        globalThis.lastFullSummary?.[interaction.channel.id] || "⚠️ ไม่มีสรุป";
+if (interaction.customId === "submit_info") {
+  await interaction.deferReply({ ephemeral: true });
 
-      if (!storedData && !fallbackSummary) {
-        return interaction.editReply({ content: "⚠️ ไม่พบข้อมูลในระบบ" });
-      }
+  try {
+    const guild = interaction.guild;
+    const member = await guild.members.fetch(interaction.user.id);
 
-      const summary = storedData?.summary || fallbackSummary;
-
-      // 🔁 แทนวันที่ "รอคิวก่อน" ด้วยวันพรุ่งนี้
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      const formattedDate = tomorrow.toLocaleDateString("th-TH", {
-        day: "numeric",
-        month: "long",
-        year: "numeric",
-      });
-      const finalSummary = summary.replace(
-        "## วันที่ : รอคิวก่อน",
-        `## วันที่ : ${formattedDate}`,
-      );
-
-      // 🖼️ โหลดไฟล์ภาพ (ถ้ามี)
-      const imageFiles = [];
-      if (storedData?.imageUrls?.length > 0) {
-        for (const url of storedData.imageUrls) {
-          try {
-            const res = await fetch(url);
-            const buffer = await res.buffer();
-            const fileName = path.basename(url).split("?")[0];
-            imageFiles.push({ attachment: buffer, name: fileName });
-          } catch (err) {
-            console.warn("⚠️ โหลดรูปไม่สำเร็จ:", err.message);
-          }
-        }
-      }
-
-      // ✅ สร้างห้องสาธารณะใหม่
-      const parentId = "1375026841114509332"; // <== ใส่ Parent ID ที่ถูกต้อง
-      const currentName = interaction.channel.name;
-      const baseName = currentName.split("-").slice(0, 2).join("-"); // เช่น 'ครั้งที่-11'
-      const channelName = baseName;
-
-      const publicChannel = await guild.channels.create({
-        name: channelName,
-        type: 0, // GUILD_TEXT
-        parent: parentId,
-        permissionOverwrites: [
-          {
-            id: guild.roles.everyone,
-            allow: [
-              PermissionsBitField.Flags.ViewChannel,
-              PermissionsBitField.Flags.ReadMessageHistory,
-            ],
-          },
-          {
-            id: client.user.id,
-            allow: [
-              PermissionsBitField.Flags.ViewChannel,
-              PermissionsBitField.Flags.SendMessages,
-              PermissionsBitField.Flags.ManageChannels,
-            ],
-          },
-        ],
-      });
-
-      restrictedChannels.add(publicChannel.id);
-
-      // ✅ ส่งข้อมูลเข้าในห้อง
-      await publicChannel.send({
-        content: finalSummary,
-        files: imageFiles.length > 0 ? imageFiles : undefined,
-      });
-
-      const adminRow = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId(`close_public_${publicChannel.id}`)
-          .setLabel("🔴 ปิดห้อง")
-          .setStyle(ButtonStyle.Danger),
-      );
-
-      await publicChannel.send({
-        content: " ",
-        components: [adminRow],
-      });
-
-      // ✅ แจ้งผลกลับไปที่ interaction
-      await interaction.editReply({
-        content: `✅ ข้อมูลถูกแชร์ไปยังห้อง ${publicChannel}`,
+    if (!member.permissions.has(PermissionsBitField.Flags.ManageChannels)) {
+      return await interaction.editReply({
+        content: "❌ คุณไม่มีสิทธิ์ส่งข้อมูลนี้",
       });
     }
+
+    const parentId = "1375026841114509332";
+
+    // ดึงข้อมูล auction_records ที่ยังไม่มี publicChannelId ตัวแรก (หรือที่คุณต้องการ)
+    const snapshot = await admin.firestore().collection("auction_records")
+      .where("publicChannelId", "==", null)
+      .orderBy("date", "asc")
+      .limit(1)
+      .get();
+
+    if (snapshot.empty) {
+      return await interaction.editReply({
+        content: "⚠️ ไม่มีข้อมูลประมูลที่ยังไม่ได้สร้างห้อง",
+      });
+    }
+
+    const doc = snapshot.docs[0];
+
+    // เรียกฟังก์ชันส่งข้อมูลอัตโนมัติ
+    await sendAuctionSummary(guild, doc, parentId);
+
+    await interaction.editReply({
+      content: `✅ ข้อมูลถูกแชร์ไปยังห้องประมูลใหม่`,
+    });
+
+  } catch (error) {
+    console.error("❌ Error submit_info:", error);
+    await interaction.editReply({
+      content: "❌ เกิดข้อผิดพลาดขณะส่งข้อมูล โปรดลองใหม่อีกครั้ง",
+    });
+  }
+}
+
+
+
 
     if (interaction.customId === "no_image") {
       const userId = interaction.user.id;
@@ -361,7 +551,22 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const summary = globalThis.lastFullSummary?.[channelId] || "⚠️ ไม่มีสรุป";
 
       // ✅ เซฟ summary ลง Firestore โดยไม่ต้องมี image
-      await saveAuctionData(channelId, { summary });
+      const timestamp = admin.firestore.Timestamp.now();
+const dateObj = timestamp.toDate();
+const weekday = dateObj.toLocaleDateString("en-US", { weekday: "long" }); // เช่น Monday
+const currentName = interaction.channel.name;
+const baseName = currentName.split("-").slice(0, 2).join("-"); // เช่น 'ครั้งที่-11'
+const channelName = baseName;
+
+await admin.firestore().collection("auction_records").doc(channelId).set({
+  summary,
+  date: timestamp,
+  weekday,
+  roomName: channelName,
+  ownerId: interaction.user.id,
+  publicChannelId: null,
+});
+
 
       // ✅ ลบภาพเก่าที่เคยอัปโหลด
       if (imageCollectorState.has(userId)) {
@@ -444,7 +649,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 ## กฎ : ${rules}
 ## ปิดเวลา 20:00 น.
 ## วันที่ : รอคิวก่อน
-||@everyone||`;
+||everyone||`;
 
     if (!globalThis.lastFullSummary) globalThis.lastFullSummary = {};
     globalThis.lastFullSummary[interaction.channel.id] = fullSummary;
@@ -474,77 +679,97 @@ client.on(Events.InteractionCreate, async (interaction) => {
       flags: 1 << 6,
     });
 
-    collector.on("collect", async (msg) => {
-      const isImage =
-        msg.attachments.size > 0 &&
-        [...msg.attachments.values()].every((file) =>
-          file.contentType?.startsWith("image/"),
-        );
+collector.on("collect", async (msg) => {
+  const isImage =
+    msg.attachments.size > 0 &&
+    [...msg.attachments.values()].every((file) =>
+      file.contentType?.startsWith("image/"),
+    );
 
-      if (isImage) {
-        const urls = [...msg.attachments.values()].map((a) => a.url);
-        for (const url of urls) {
-          await saveAuctionData(msg.channel.id, { imageUrls: [url] });
-        }
-      } else if (msg.content) {
-        await saveAuctionData(msg.channel.id, {
-          textEntries: admin.firestore.FieldValue.arrayUnion(msg.content),
-        });
-      }
-
-      if (!isImage) {
-        try {
-          await msg.delete();
-          await msg.channel.send({
-            content: `❌ <@${msg.author.id}> โปรดส่ง **เฉพาะรูปภาพ** เท่านั้น`,
-          });
-        } catch (err) {
-          console.warn("ลบข้อความไม่ได้:", err.message);
-        }
-        return;
-      }
-
-      // ลบภาพเก่าถ้ามี
-      if (imageCollectorState.has(msg.author.id)) {
-        const oldMsg = imageCollectorState.get(msg.author.id);
-        try {
-          await oldMsg.delete();
-        } catch (err) {
-          console.warn("ลบภาพเก่าไม่สำเร็จ");
-        }
-      }
-
-      imageCollectorState.set(msg.author.id, msg);
-
-      // ลบข้อความที่ไม่ใช่ embed หลัก
-      const messages = await msg.channel.messages.fetch({ limit: 100 });
-      const botMessages = messages.filter(
-        (m) =>
-          m.author.id === client.user.id &&
-          !m.embeds.some((e) => e.title === "📋 กรอกข้อมูลได้เลยย"),
-      );
-
-      for (const m of botMessages.values()) {
-        try {
-          await m.delete();
-        } catch (err) {
-          console.warn("ลบข้อความบอทบางรายการไม่ได้:", err.message);
-        }
-      }
-
+  if (!isImage) {
+    try {
+      await msg.delete();
       await msg.channel.send({
-        content: fullSummary,
-        files: [...msg.attachments.values()].map((a) => a.url),
+        content: `❌ <@${msg.author.id}> โปรดส่ง **เฉพาะรูปภาพ** เท่านั้น`,
       });
-      try {
-        await msg.react("✅");
-        await msg.delete();
-      } catch (err) {
-        console.warn("⚠️ ส่งข้อความ / react / ลบ ไม่สำเร็จ:", err.message);
-      }
+    } catch (err) {
+      console.warn("ลบข้อความไม่ได้:", err.message);
+    }
+    return;
+  }
 
-      collector.stop();
-    });
+  // ลบภาพเก่าถ้ามี
+  if (imageCollectorState.has(msg.author.id)) {
+    const oldMsg = imageCollectorState.get(msg.author.id);
+    try {
+      await oldMsg.delete();
+    } catch (err) {
+      console.warn("ลบภาพเก่าไม่สำเร็จ");
+    }
+  }
+  imageCollectorState.set(msg.author.id, msg);
+
+  // ลบข้อความที่ไม่ใช่ embed หลัก
+  const messages = await msg.channel.messages.fetch({ limit: 100 });
+  const botMessages = messages.filter(
+    (m) =>
+      m.author.id === client.user.id &&
+      !m.embeds.some((e) => e.title === "📋 กรอกข้อมูลได้เลยย"),
+  );
+  for (const m of botMessages.values()) {
+    try {
+      await m.delete();
+    } catch (err) {
+      console.warn("ลบข้อความบอทบางรายการไม่ได้:", err.message);
+    }
+  }
+
+  // ส่งรูป + สรุปในห้องปัจจุบัน
+  await msg.channel.send({
+    content: fullSummary,
+    files: [...msg.attachments.values()].map((a) => a.url),
+  });
+
+  try {
+    await msg.react("✅");
+    await msg.delete();
+  } catch (err) {
+    console.warn("⚠️ ส่งข้อความ / react / ลบ ไม่สำเร็จ:", err.message);
+  }
+
+  // ส่งภาพไปยังห้องถาวร เพื่อเก็บลิงก์
+  const permaChannelId = "1400551163321122836";
+  const permaChannel = await client.channels.fetch(permaChannelId);
+
+  const permaMsg = await permaChannel.send({
+    content: `<#${msg.channel.id}>`,
+    files: [...msg.attachments.values()].map((a) => a.url),
+  });
+  const currentName = interaction.channel.name;
+      const baseName = currentName.split("-").slice(0, 2).join("-"); // เช่น 'ครั้งที่-11'
+      const channelName = baseName;
+  const permaLink = `https://discord.com/channels/${msg.guild.id}/${permaChannelId}/${permaMsg.id}`;
+  const timestamp = admin.firestore.Timestamp.now();
+const dateObj = timestamp.toDate();
+const weekday = dateObj.toLocaleDateString("en-US", { weekday: "long" }); // ✅ ชื่อวันแบบอังกฤษ
+
+
+await admin.firestore().collection("auction_records").doc(msg.channel.id).set({
+  permaLink,
+  summary: fullSummary,
+  date: timestamp,
+  weekday: weekday,
+  roomName: channelName,
+  ownerId: interaction.user.id,
+  publicChannelId: null,
+});
+
+
+
+  collector.stop();
+});
+
+
 
     collector.on("end", async () => {
       if (!imageCollectorState.has(interaction.user.id)) {
@@ -557,5 +782,4 @@ client.on(Events.InteractionCreate, async (interaction) => {
     });
   }
 });
-
 client.login(process.env.token);
