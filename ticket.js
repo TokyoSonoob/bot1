@@ -26,7 +26,6 @@ function createFormButton() {
 
 
 module.exports = function (client) {
-  // ฟังคำสั่ง !ticket
   client.on("messageCreate", async (message) => {
     if (message.content === "!ticket") {
       const embed = new EmbedBuilder()
@@ -52,7 +51,7 @@ module.exports = function (client) {
     if (interaction.isButton()) {
       if (interaction.customId === "create_ticket") {
         const channel = await interaction.guild.channels.create({
-          name: `ตั๋ว-${interaction.user.username}`,
+          name: `🔥-𝕋𝕚𝕔𝕜𝕖𝕥_${interaction.user.username}`,
           type: ChannelType.GuildText,
           parent: CATEGORY_ID,
           permissionOverwrites: [
