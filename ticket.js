@@ -121,7 +121,7 @@ const selectMenu = new StringSelectMenuBuilder()
     { label: "ตากระพริบ", value: "eye_blink" },
     { label: "ตากระพริบใหม่", value: "eye_blink_new" },
     { label: "หน้าอก", value: "boobs" },
-    { label: "ปอยปม", value: "bangs" },
+    { label: "ปอยผม", value: "bangs" },
     { label: "ตาเรืองแสง", value: "glow_eye" },
     { label: "ตาขยับ", value: "eye_move" }
   );
@@ -191,7 +191,7 @@ const msg = await interaction.channel.send({
     eye_blink: "ตากระพริบ",
     eye_blink_new: "ตากระพริบใหม่",
     boobs: "หน้าอก",
-    bangs: "ปอยปม",
+    bangs: "ปอยผม",
     glow_eye: "ตาเรืองแสง",
     eye_move: "ตาขยับ",
   };
