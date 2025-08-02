@@ -32,6 +32,7 @@ require("./money")(client);
 require("./skin")(client);
 require("./send")(client);
 require("./pamoon")(client);
+require("./ticket")(client);
 const imageCollectorState = new Map();
 const restrictedChannels = new Set();
 async function getAttachmentsFromPermaLink(permaLink) {
