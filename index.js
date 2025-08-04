@@ -147,57 +147,6 @@ async function sendAuctionSummary(guild, doc, parentId) {
   console.log(`✅ ส่งข้อมูลไปยังห้อง ${channelName} และเซฟ publicChannelId แล้ว`);
 }
 
-async function sendAuctionSummariesBatch(guild, maxRooms = 5) {
-  const parentId = "1375026841114509332"; // หมวดหมู่ public
-
-  // ตรวจสอบจำนวนห้องในหมวดหมู่
-  const existingChannels = guild.channels.cache.filter(
-    (ch) => ch.parentId === parentId
-  );
-  if (existingChannels.size >= maxRooms) {
-    console.log(`⚠️ มีห้องในหมวด public ถึงจำนวนสูงสุด (${maxRooms}) แล้ว`);
-    return;
-  }
-
-  // ดึงข้อมูลที่ยังไม่ได้ส่ง publicChannel
-  const snapshot = await admin.firestore().collection("auction_records")
-    .where("publicChannelId", "==", null)
-    .orderBy("date", "asc")
-    .get();
-
-  if (snapshot.empty) {
-    console.log("⚠️ ไม่มีข้อมูลประมูลที่ยังไม่ได้สร้างห้อง");
-    return;
-  }
-
-  const dateCount = {};
-
-  for (const doc of snapshot.docs) {
-    const data = doc.data();
-
-    // แปลง Timestamp Firestore เป็น yyyy-mm-dd
-    const date = data.date?.toDate?.();
-    if (!date) continue;
-    const dateKey = date.toISOString().split("T")[0];
-
-    if (!dateCount[dateKey]) dateCount[dateKey] = 0;
-    if (dateCount[dateKey] >= 5) continue; // ข้ามถ้าเกิน 5 คนในวันเดียวกัน
-
-    if (
-      guild.channels.cache.filter(ch => ch.parentId === parentId).size >= maxRooms
-    ) {
-      console.log(`⚠️ ห้องในหมวด public ถึงจำนวนสูงสุด (${maxRooms}) แล้ว`);
-      break;
-    }
-
-    await sendAuctionSummary(guild, doc, parentId);
-    dateCount[dateKey]++;
-  }
-}
-
-
-
-
 
 const scheduleAutoPost = () => {
   setInterval(async () => {
@@ -231,30 +180,26 @@ const scheduleAutoPost = () => {
 
       // ดึงข้อมูลที่ publicChannelId === null ทั้งหมด และเรียงจากล่าสุดไปเก่าสุด
       const snapshot = await admin.firestore().collection("auction_records")
-        .where("publicChannelId", "==", null)
-        .orderBy("date", "desc")
-        .get();
+  .where("publicChannelId", "==", null)
+  .orderBy("date", "desc")
+  .get();
 
-      if (snapshot.empty) {
-        console.log("✅ ไม่มีข้อมูลรอส่ง public แล้ว");
-        return;
-      }
+const docsSorted = snapshot.docs
+  .map(doc => {
+    const data = doc.data();
+    const match = data.roomName?.match(/ครั้งที่-(\d+)/);
+    const count = match ? parseInt(match[1]) : Infinity;
+    return { doc, count };
+  })
+  .filter(d => d.count !== Infinity)
+  .sort((a, b) => a.count - b.count);
 
-      // ดึงเอกสารมาเป็น array แล้วเรียงตามตัวเลขจากชื่อ roomName เช่น "ครั้งที่-12"
-      const docsSorted = snapshot.docs
-        .map(doc => {
-          const data = doc.data();
-          const match = data.roomName?.match(/ครั้งที่-(\d+)/);
-          const count = match ? parseInt(match[1]) : Infinity;
-          return { doc, count };
-        })
-        .filter(d => d.count !== Infinity)
-        .sort((a, b) => a.count - b.count);
+for (const item of docsSorted) {
+  if (channelsInCategory.size >= 7) break;
+  await sendAuctionSummary(guild, item.doc, categoryId);
+  channelsInCategory.set(item.doc.id, { id: item.doc.id });
+}
 
-      if (docsSorted.length === 0) {
-        console.log("⚠️ ไม่มีข้อมูลที่มี roomName ถูกต้อง");
-        return;
-      }
 
       // Loop ส่งทีละรายการ โดยหยุดถ้าในหมวดหมู่เต็ม 7 ห้องแล้ว
       for (const item of docsSorted) {
@@ -510,23 +455,36 @@ if (interaction.customId === "submit_info") {
 
     const parentId = "1375026841114509332";
 
-    // ดึงข้อมูล auction_records ที่ยังไม่มี publicChannelId ตัวแรก (หรือที่คุณต้องการ)
-    const snapshot = await admin.firestore().collection("auction_records")
-      .where("publicChannelId", "==", null)
-      .orderBy("date", "asc")
-      .limit(1)
-      .get();
+    // ดึงข้อมูลทั้งหมดมา แล้วกรองเอง
+    const snapshot = await admin.firestore().collection("auction_records").get();
 
-    if (snapshot.empty) {
+    // กรอง publicChannelId ที่เป็น null, "" หรือ ไม่มีฟิลด์
+    const filteredDocs = snapshot.docs.filter(doc => {
+      const pcid = doc.data().publicChannelId;
+      return pcid === null || pcid === "" || pcid === undefined;
+    });
+
+    if (filteredDocs.length === 0) {
       return await interaction.editReply({
         content: "⚠️ ไม่มีข้อมูลประมูลที่ยังไม่ได้สร้างห้อง",
       });
     }
 
-    const doc = snapshot.docs[0];
+    // เรียงลำดับตามเลขใน roomName เช่น "ครั้งที่-12"
+    const docsSorted = filteredDocs
+      .map(doc => {
+        const data = doc.data();
+        const match = data.roomName?.match(/ครั้งที่-(\d+)/);
+        const count = match ? parseInt(match[1]) : Infinity;
+        return { doc, count };
+      })
+      .filter(d => d.count !== Infinity)
+      .sort((a, b) => a.count - b.count);
+
+    const firstDoc = docsSorted.length > 0 ? docsSorted[0].doc : filteredDocs[0];
 
     // เรียกฟังก์ชันส่งข้อมูลอัตโนมัติ
-    await sendAuctionSummary(guild, doc, parentId);
+    await sendAuctionSummary(guild, firstDoc, parentId);
 
     await interaction.editReply({
       content: `✅ ข้อมูลถูกแชร์ไปยังห้องประมูลใหม่`,
@@ -539,6 +497,7 @@ if (interaction.customId === "submit_info") {
     });
   }
 }
+
 
 
 
@@ -783,3 +742,4 @@ await admin.firestore().collection("auction_records").doc(msg.channel.id).set({
   }
 });
 client.login(process.env.token);
+
