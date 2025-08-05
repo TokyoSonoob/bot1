@@ -5,7 +5,7 @@ const app = express();
 app.use(express.json());
 
 /** 👇 ชื่อบอทตัวเอง (ชื่อเต็ม) */
-const myName = "testLock";
+const myName = "Bot1 for my discord";
 
 /** 👇 รายชื่อบอททั้งหมด พร้อมชื่อ subdomain สำหรับ ping */
 const bots = [
