@@ -27,7 +27,9 @@ const missedReplies = {};
 /** ✅ endpoint ping */
 app.post("/ping", (req, res) => {
   const { from } = req.body;
-  console.log(`📨 ได้รับ ping จาก ${from}`);
+  if (process.env.NODE_ENV !== "production") {
+    console.log(`📨 ได้รับ ping จาก ${from}`);
+  }
   res.send({ ok: true });
 });
 
@@ -38,6 +40,8 @@ app.get("/", (_, res) => {
 
 /** 🔁 ping ทุกตัวทุก 1 นาที */
 setInterval(async () => {
+  console.log(`[${new Date().toISOString()}] 🔁 เริ่ม ping บอททั้งหมด...`);
+
   for (const bot of bots) {
     if (bot.name === myName) continue;
 
@@ -55,12 +59,16 @@ setInterval(async () => {
     }
   }
 
-  // Redeploy ถ้าบอทไหนไม่ตอบเกิน 5 ครั้ง และชื่อเราเรียงน้อยกว่าเป้าหมาย
+  // เช็คและ redeploy ถ้าจำเป็น
   for (const [botName, missed] of Object.entries(missedReplies)) {
     if (missed >= 5 && shouldRedeploy(botName)) {
-      console.log(`🚨 ${botName} ไม่ตอบ ${missed} ครั้ง → redeploy โดย ${myName}`);
-      await redeployBot(botName);
-      missedReplies[botName] = 0;
+      const delay = 5000 + Math.random() * 5000; // รอ 5-10 วิก่อน deploy
+      console.log(`🚨 ${botName} ไม่ตอบ ${missed} ครั้ง → เตรียม redeploy ใน ${Math.round(delay / 1000)} วิ โดย ${myName}`);
+
+      setTimeout(async () => {
+        await redeployBot(botName);
+        missedReplies[botName] = 0;
+      }, delay);
     }
   }
 }, 60_000);
