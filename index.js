@@ -47,7 +47,7 @@ async function getAttachmentsFromPermaLink(permaLink) {
     `https://discord.com/api/v10/channels/${channelId}/messages/${messageId}`,
     {
       headers: {
-        Authorization: `Bot ${TOKEN}`,
+        Authorization: `Bot ${process.env.token)}`,
       },
     }
   );
@@ -742,4 +742,5 @@ await admin.firestore().collection("auction_records").doc(msg.channel.id).set({
   }
 });
 client.login(process.env.token);
+
 
