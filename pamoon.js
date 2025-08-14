@@ -148,11 +148,49 @@ client.once("ready", async () => {
   console.log("🔔 เริ่มจบการประมูลในห้อง:", bidChannel.name);
   await message.delete().catch(() => {});
 
-  // ดึงข้อมูล auction_records ทั้งหมด
+  // helper: เช็กว่ายังอยู่ในเซิร์ฟไหม
+  async function fetchMemberOrNull(guild, userId) {
+    return guild.members.cache.get(userId) || await guild.members.fetch(userId).catch(() => null);
+  }
+
+  // helper: ไล่หาข้อความล่าสุดที่เป็น "ชื่อ ราคา" และคนโพสต์ยังอยู่ในเซิร์ฟ
+  async function findLatestBidFromMessages(channel, guild) {
+    const bidRegex = /^(\S+)\s+(\d+(?:\.\d+)?)$/;
+    let beforeId = null;
+
+    while (true) {
+      const batch = await channel.messages.fetch({ limit: 100, ...(beforeId ? { before: beforeId } : {}) });
+      if (!batch.size) break;
+
+      for (const msg of batch.values()) {
+        if (msg.author.bot) continue;
+        const text = msg.content?.trim() ?? "";
+        const m = text.match(bidRegex);
+        if (!m) continue;
+
+        const [, name, priceStr] = m;
+        const member = await fetchMemberOrNull(guild, msg.author.id);
+        if (member) {
+          return {
+            userId: msg.author.id,
+            name,
+            price: parseFloat(priceStr),
+            messageId: msg.id,
+            at: msg.createdTimestamp,
+          };
+        }
+      }
+
+      beforeId = batch.last().id;
+    }
+
+    return null;
+  }
+
+  // ดึงข้อมูล auction_records
   const recordsSnap = await db.collection("auction_records").get();
 
   let receptionRecord = null;
-
   for (const doc of recordsSnap.docs) {
     const data = doc.data();
     if (data.publicChannelId === bidChannelId) {
@@ -174,51 +212,89 @@ client.once("ready", async () => {
     return;
   }
 
-  // ดึงข้อมูล bids
+  // ดึงข้อมูล bids ล่าสุดจาก DB
   const bidsSnap = await db.collection("bids").doc(bidChannelId).get();
 
-  if (!bidsSnap.exists) {
-    // ไม่มีผู้ประมูล
-    await bidChannel.send("# ปิดการประมูล\n## ไม่มีผู้ประมูลในห้องนี้");
-    await receptionChannel.send(`# การประมูลได้จบลงแล้ว\n ## ขอแสดงความเสียใจด้วยคับ ไม่มีผู้ประมูล\n ## ไม่มีค่าที่ประมูลคับ หากจะลงประมูลใหม่ต้องกดตั๋วอีกครั้งคับ \n <@${receptionRecord.ownerId}> `);
-    console.warn("⚠️ ไม่มี bids สำหรับห้องนี้:", bidChannelId);
+  let winner = null;
+  let replacedWinner = false;
+  let oldWinner = null;
+
+  if (bidsSnap.exists) {
+    const bidsData = bidsSnap.data();
+    if (bidsData?.userId && bidsData?.price) {
+      const member = await fetchMemberOrNull(message.guild, bidsData.userId);
+      if (member) {
+        winner = { userId: bidsData.userId, name: bidsData.name, price: bidsData.price };
+      } else {
+        // คนล่าสุดออกจากเซิร์ฟ → เก็บไว้เป็น oldWinner
+        replacedWinner = true;
+        oldWinner = { userId: bidsData.userId, name: bidsData.name, price: bidsData.price };
+      }
+    }
+  }
+
+  // ถ้าคนล่าสุดใน DB ไม่อยู่ → หา fallback จากข้อความย้อนหลัง
+  if (!winner) {
+    const fallback = await findLatestBidFromMessages(bidChannel, message.guild);
+    if (fallback) {
+      winner = fallback;
+      await db.collection("bids").doc(bidChannelId).set({
+        name: winner.name,
+        price: winner.price,
+        userId: winner.userId,
+        channelId: bidChannelId,
+        updatedAt: Date.now(),
+      }, { merge: true });
+    }
+  }
+
+  if (!winner) {
+    await bidChannel.send("# ปิดการประมูล\n## ไม่มีผู้ชนะที่ยังอยู่ในเซิร์ฟเวอร์");
+    await receptionChannel.send(
+      `# การประมูลได้จบลงแล้ว\n## ไม่มีผู้ชนะที่ยังอยู่ในเซิร์ฟเวอร์\n<@${receptionRecord.ownerId}> หากต้องการลงประมูลใหม่ โปรดกดตั๋วอีกครั้ง`
+    );
+    await db.collection("bids").doc(bidChannelId).delete().catch(() => {});
+    console.warn("⚠️ ไม่มีผู้ชนะที่ยังอยู่:", bidChannelId);
     return;
   }
 
-  const bidsData = bidsSnap.data();
-  const { userId, price, name } = bidsData;
+  // ==== มีผู้ชนะแล้ว ====
+  const { userId, price, name } = winner;
 
   try {
-    // ส่งข้อความสรุปใน publicChannelId (bidChannel)
-    await bidChannel.send(`# จบการประมูล \n## คุณ ${name}\n## ชนะในราคา ${price} บาท\n<@${userId}>`);
+    if (replacedWinner && oldWinner) {
+      await bidChannel.send(`# จบการประมูล \n## คุณ ${name}\n## ชนะในราคา ${price} บาท\n## เนื่องจาก **${oldWinner.name}** ออกจากเซิร์ฟเวอร์ในระหว่างการประมูล\n<@${userId}>`);
+    } else {
+      await bidChannel.send(`# จบการประมูล \n## คุณ ${name}\n## ชนะในราคา ${price} บาท\n<@${userId}>`);
+    }
 
-    // เพิ่ม permission ให้ผู้ชนะในห้องรับรอง
     await receptionChannel.permissionOverwrites.edit(userId, {
       ViewChannel: true,
       SendMessages: true,
       ReadMessageHistory: true,
     });
 
-    // ส่ง tag ผู้ชนะและเจ้าของในห้องรับรอง แค่ครั้งเดียว
     const fee = price * 0.08;
-    await receptionChannel.send(`# การประมูลได้จบลงไปแล้ว \n## คุณ <@${userId}>\n## ชนะในราคา ${price} บาท\n** คุณ <@${receptionRecord.ownerId}> ส่งช่องทางการโอนให้กับคนที่ชนะประมูล\n และโอนค่าที่ประมูลใน <#1371395778727383040>\n เป็นจำนวน ${fee.toFixed(2)} บาท**`);
+    await receptionChannel.send(
+      `# การประมูลได้จบลงไปแล้ว \n## คุณ <@${userId}>\n## ชนะในราคา ${price} บาท\n** คุณ <@${receptionRecord.ownerId}> ส่งช่องทางการโอนให้กับคนที่ชนะประมูล\n และโอนค่าที่ประมูลใน <#1371395778727383040>\n เป็นจำนวน ${fee.toFixed(2)} บาท**`
+    );
 
-    // ลบข้อมูล bids
     await db.collection("bids").doc(bidChannelId).delete().catch(() => {});
 
     console.log("✅ จบการประมูลเรียบร้อย");
     const historyChannelId = "1376195659501277286";
-const historyChannel = message.guild.channels.cache.get(historyChannelId);
-if (historyChannel) {
-  await historyChannel.send(
-    `# ${bidChannel.name}\n## คุณ <@${userId}>\n ## ได้ไปในราคา ${price} บาท`
-  );
-}
+    const historyChannel = message.guild.channels.cache.get(historyChannelId);
+    if (historyChannel) {
+      await historyChannel.send(
+        `# ${bidChannel.name}\n## คุณ <@${userId}>\n ## ได้ไปในราคา ${price} บาท`
+      );
+    }
   } catch (err) {
     console.error("❌ เกิดข้อผิดพลาด:", err);
     await message.reply("❌ มีบางอย่างผิดพลาดขณะจบการประมูล");
   }
 }
+
 
 
 
