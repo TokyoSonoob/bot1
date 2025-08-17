@@ -70,5 +70,16 @@ module.exports = function (client) {
 
       await message.channel.send({ embeds: [embed] });
     }
+    if (message.content === "!sand") {
+      await message.delete().catch(console.error);
+      const embed = new EmbedBuilder()
+        .setTitle("⭐ สามารถโอนได้เลยน้าา")
+        .setDescription("ช่องทางการชำระเงิน")
+        .setColor(0x9b59b6)
+        .setImage("https://drive.google.com/uc?export=download&id=1JgRZ-bHp1Uho2yQPb-NszqhDf5637Ism")
+        .setFooter({ text: "Make by Purple Shop" });
+
+      await message.channel.send({ embeds: [embed] });
+    }
   });
 };
