@@ -1,3 +1,4 @@
+require('dotenv').config();
 const {
   Client,
   GatewayIntentBits,
@@ -36,6 +37,7 @@ require("./ticket")(client);
 require("./emoji")(client);
 require("./pro")(client);
 require("./boom")(client);
+require("./report")(client);
 const imageCollectorState = new Map();
 const restrictedChannels = new Set();
 async function getAttachmentsFromPermaLink(permaLink) {
@@ -133,7 +135,7 @@ async function sendAuctionSummary(guild, doc, parentId) {
   const adminRow = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`close_public_${publicChannel.id}`)
-      .setLabel("🔴 ปิดห้อง")
+      .setLabel("ปิดห้อง")
       .setStyle(ButtonStyle.Danger),
   );
 
@@ -252,7 +254,7 @@ client.on("messageCreate", async (message) => {
     await message.delete().catch(console.error);
 
     const embed = new EmbedBuilder()
-      .setTitle('・จองห้อง・')
+      .setTitle('จองห้องประมูล')
       .setDescription('เปิดตั๋วเพื่อจองห้อง')
       .setColor(0x9b59b6)
       .setImage('https://media.tenor.com/S4MdyoCR3scAAAAM/oblakao.gif')
@@ -261,7 +263,7 @@ client.on("messageCreate", async (message) => {
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId('open_room')
-        .setLabel('🛎️ จองประมูล')
+        .setLabel('จองประมูล')
         .setStyle(ButtonStyle.Danger)
     );
 
@@ -358,15 +360,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const adminRow = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId("close_channel")
-          .setLabel("🔴 ปิดห้อง")
+          .setLabel("ปิดห้อง")
           .setStyle(ButtonStyle.Danger),
         new ButtonBuilder()
           .setCustomId("fill_info")
-          .setLabel("🟡 กรอกข้อมูล")
+          .setLabel("กรอกข้อมูล")
           .setStyle(ButtonStyle.Secondary),
         new ButtonBuilder()
           .setCustomId("submit_info")
-          .setLabel("🟢 ส่งข้อมูล")
+          .setLabel("ส่งข้อมูล")
           .setStyle(ButtonStyle.Success),
       );
 
@@ -745,6 +747,7 @@ await admin.firestore().collection("auction_records").doc(msg.channel.id).set({
   }
 });
 client.login(process.env.token);
+
 
 
 
