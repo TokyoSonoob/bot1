@@ -5,7 +5,7 @@ const CHANNEL_IDS = new Set([
   "1378318691329904783",
 ]);
 
-const EMOJIS = ["🫶","☁️","💐","💗","🎀","✨"];
+const EMOJIS = ["🫶","☁️","💐","💗","✨"];
 
 
 const extractEmojiId = (e) => {
