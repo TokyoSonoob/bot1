@@ -54,7 +54,7 @@ module.exports = function (client) {
         .setTitle("⭐ สามารถโอนได้เลยน้าา")
         .setDescription("ช่องทางการชำระเงิน")
         .setColor(0x9b59b6)
-        .setImage("https://drive.google.com/uc?export=download&id=1zV6c5K2H5IykehhKDkx5Hx_m3qUkX7ac")
+        .setImage("https://drive.google.com/uc?export=download&id=10yqYe3T_jCI_zq733uub1fWlAh_tAHId")
         .setFooter({ text: "Make by Purple Shop" });
 
       await message.channel.send({ embeds: [embed] });
