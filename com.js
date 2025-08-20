@@ -8,40 +8,32 @@ const {
   ActionRowBuilder,
   PermissionsBitField,
 } = require("discord.js");
-const express = require("express");
-const { db } = require("./firebase");
 
 module.exports = function (client) {
   const PREFIX = "!";
   const STAFF_ROLE_ID = "1374387525040214016";
-  const CATEGORY_ID = "1374396536951406683";
-  const FORM_CHANNEL_ID = "1374427289948786759";
+  const CATEGORY_ID = "1375932586374729848"; // หมวดหมู่คอมมิชชั่น
 
+  // เหลือเฉพาะ nj, muy และ ne (เนจิ)
   const OWNER_IDS = {
-    skin_hi: "1134464935448023152",
-    skin_sky: "1260765032413659159",
-    skin_muy: "1010202066720936048", // เปลี่ยนจาก skin_mui -> skin_muy
-    skin_kim: "1294133075801931870",
-    skin_nj: "1092393537238204497",
+    com_muy: "1010202066720936048", // มุย
+    com_nj:  "1092393537238204497", // NJ
+    com_ne:  "765887179741200394",  // เนจิ
   };
 
   const LABELS = {
-    skin_hi: "ลายเส้นฮิเคริ",
-    skin_sky: "ลายเส้นสกาย",
-    skin_muy: "ลายเส้นมุย", // เปลี่ยนคีย์
-    skin_kim: "ลายเส้นขิม",
-    skin_nj: "ลายเส้น NJ",
+    com_muy: "ลายเส้นมุย",
+    com_nj:  "ลายเส้นNJ",
+    com_ne:  "ลายเส้นเนจิ",
   };
 
-  // แปลง arg -> customId ของปุ่ม (รับเฉพาะ muy แทน mui)
+  // arg -> customId (muy | nj | ne)
   const argToCustomId = (raw) => {
     if (!raw) return null;
     const key = String(raw).toLowerCase();
-    if (key === "hi") return "skin_hi";
-    if (key === "sky") return "skin_sky";
-    if (key === "muy") return "skin_muy"; // ใช้ muy เท่านั้น
-    if (key === "kim") return "skin_kim";
-    if (key === "nj") return "skin_nj";
+    if (key === "muy") return "com_muy";
+    if (key === "nj")  return "com_nj";
+    if (key === "ne")  return "com_ne";
     return null;
   };
 
@@ -56,37 +48,31 @@ module.exports = function (client) {
     const args = message.content.slice(PREFIX.length).trim().split(/ +/);
     const command = args.shift().toLowerCase();
 
-    // โพสต์เมนูปุ่มเลือกช่างวาด
-    if (command === "skin") {
+    // โพสต์เมนูปุ่ม "คอมมิชชั่น"
+    if (command === "com") {
       if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
         return message.reply("❌ เฉพาะแอดมินเท่านั้นที่ใช้คำสั่งนี้ได้");
       }
 
-      await message.channel.send({
-        content: `# ดูลายเส้นแต่ละคนได้ที่\n## <#1374409545836925008>`,
-      });
-
       const embed = new EmbedBuilder()
-        .setTitle("กดตั๋วเพื่อสั่งสกิน")
+        .setTitle("กดตั๋วเพื่อสั่งคอมมิชชั่น")
         .setDescription("ห้ามกดเล่น")
         .setColor(0x9b59b6)
         .setImage("https://media.tenor.com/S4MdyoCR3scAAAAM/oblakao.gif")
         .setFooter({ text: "Make by Purple Shop" });
 
       const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId("skin_hi").setLabel(LABELS.skin_hi).setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId("skin_sky").setLabel(LABELS.skin_sky).setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId("skin_muy").setLabel(LABELS.skin_muy).setStyle(ButtonStyle.Primary), // เปลี่ยนเป็น muy
-        new ButtonBuilder().setCustomId("skin_kim").setLabel(LABELS.skin_kim).setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId("skin_nj").setLabel(LABELS.skin_nj).setStyle(ButtonStyle.Primary)
+        new ButtonBuilder().setCustomId("com_muy").setLabel(LABELS.com_muy).setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId("com_nj").setLabel(LABELS.com_nj).setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId("com_ne").setLabel(LABELS.com_ne).setStyle(ButtonStyle.Primary),
       );
 
       await message.channel.send({ embeds: [embed], components: [row] });
       await message.delete().catch(() => {});
     }
 
-    // ปิดปุ่มด้วยชื่อย่อ: !closeskin <hi|sky|muy|kim|nj>
-    if (command === "closeskin") {
+    // ปิดปุ่ม: !closecom <muy|nj|ne>
+    if (command === "closecom") {
       if (!isAdminOrStaff(message.member)) {
         await message.delete().catch(() => {});
         return;
@@ -115,8 +101,8 @@ module.exports = function (client) {
       await message.delete().catch(() => {});
     }
 
-    // เปิดปุ่มด้วยชื่อย่อ: !openskin <hi|sky|muy|kim|nj>
-    if (command === "openskin") {
+    // เปิดปุ่ม: !opencom <muy|nj|ne>
+    if (command === "opencom") {
       if (!isAdminOrStaff(message.member)) {
         await message.delete().catch(() => {});
         return;
@@ -137,13 +123,12 @@ module.exports = function (client) {
         const exists = currentRow.components.some((btn) => btn.customId === customIdToAdd);
 
         if (!exists) {
-          // จำกัดสูงสุด 5 ปุ่ม/แถวตามข้อกำหนด Discord
           if (currentRow.components.length >= 5) {
             // เต็มแล้ว ไม่เพิ่ม
           } else {
             const newButton = new ButtonBuilder()
               .setCustomId(customIdToAdd)
-              .setLabel(LABELS[customIdToAdd] || "ลายเส้น")
+              .setLabel(LABELS[customIdToAdd] || "คอมมิชชั่น")
               .setStyle(ButtonStyle.Primary);
 
             const newRow = new ActionRowBuilder().addComponents([...currentRow.components, newButton]);
@@ -162,44 +147,33 @@ module.exports = function (client) {
     const { guild, user } = interaction;
 
     if (
-      interaction.customId === "skin_hi" ||
-      interaction.customId === "skin_sky" ||
-      interaction.customId === "skin_muy" || // เปลี่ยนเป็น muy
-      interaction.customId === "skin_kim" ||
-      interaction.customId === "skin_nj"
+      interaction.customId === "com_muy" ||
+      interaction.customId === "com_nj"  ||
+      interaction.customId === "com_ne"
     ) {
-      let skinName = "";
-      let channelName = "";
+      let titleName = "";   // ใช้แสดงผล
+      let channelName = ""; // ชื่อห้อง
       let pingUserId = "";
 
       switch (interaction.customId) {
-        case "skin_hi":
-          skinName = "ลายเส้นคุณฮิเคริ";
-          channelName = `สกินคุณฮิเคริ`;
-          pingUserId = OWNER_IDS.skin_hi;
+        case "com_muy":
+          titleName = "มุย";
+          channelName = `คอมมิชชั่นมุย`;
+          pingUserId = OWNER_IDS.com_muy;
           break;
-        case "skin_sky":
-          skinName = "ลายเส้นคุณสกาย";
-          channelName = `สกินคุณสกาย`;
-          pingUserId = OWNER_IDS.skin_sky;
+        case "com_nj":
+          titleName = "NJ";
+          channelName = `คอมมิชชั่น NJ`;
+          pingUserId = OWNER_IDS.com_nj;
           break;
-        case "skin_muy": // เปลี่ยนจาก skin_mui
-          skinName = "ลายเส้นคุณมุย";
-          channelName = `สกินมุยคุง`;
-          pingUserId = OWNER_IDS.skin_muy;
-          break;
-        case "skin_kim":
-          skinName = "ลายเส้นคุณขิม";
-          channelName = `สกินคุณขิม`;
-          pingUserId = OWNER_IDS.skin_kim;
-          break;
-        case "skin_nj":
-          skinName = "ลายเส้นคุณ NJ";
-          channelName = `สกินคุณ NJ`;
-          pingUserId = OWNER_IDS.skin_nj;
+        case "com_ne":
+          titleName = "เนจิ";
+          channelName = `คอมมิชชั่นเนจิ`;
+          pingUserId = OWNER_IDS.com_ne;
           break;
       }
 
+      // จำกัดเปิดได้ไม่เกิน 3 ห้อง/คน/ช่าง (อิงจากชื่อห้อง + การมองเห็น)
       const userChannels = guild.channels.cache.filter(
         (ch) =>
           ch.parentId === CATEGORY_ID &&
@@ -209,14 +183,14 @@ module.exports = function (client) {
 
       if (userChannels.size >= 3) {
         return interaction.reply({
-          content: `❗ คุณสามารถเปิดตั๋วลายเส้น ${skinName} ได้สูงสุด 3 ห้องเท่านั้น (ตอนนี้เปิดอยู่ ${userChannels.size} ห้อง)`,
+          content: `❗ คุณสามารถเปิดตั๋วคอมมิชชั่นของ ${titleName} ได้สูงสุด 3 ห้องเท่านั้น (ตอนนี้เปิดอยู่ ${userChannels.size} ห้อง)`,
           ephemeral: true,
         });
       }
 
       const channel = await guild.channels.create({
         name: channelName,
-        type: 0,
+        type: 0, // GuildText
         parent: CATEGORY_ID,
         permissionOverwrites: [
           { id: guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
@@ -225,17 +199,18 @@ module.exports = function (client) {
         ],
       });
 
-      const embed = new EmbedBuilder().setTitle(`${skinName}`).setColor(0x9b59b6);
-      const formUrl = `https://seamuwwww.vercel.app?channelId=${channel.id}`;
+      const embed = new EmbedBuilder()
+        .setTitle(`ตั๋วคอมมิชชั่น (${titleName})`)
+        .setColor(0x9b59b6)
+        .setFooter({ text: "Make by Purple Shop" });
 
+      // เหลือเฉพาะปุ่มลบตั๋ว
       const deleteBtn = new ButtonBuilder()
         .setCustomId("delete_ticket")
         .setLabel("ลบตั๋ว")
         .setStyle(ButtonStyle.Danger);
 
-      const formBtn = new ButtonBuilder().setLabel("กรอกแบบฟอร์ม").setStyle(ButtonStyle.Link).setURL(formUrl);
-
-      const row = new ActionRowBuilder().addComponents(deleteBtn, formBtn);
+      const row = new ActionRowBuilder().addComponents(deleteBtn);
 
       await channel.send({
         content: `<@${user.id}>\n<@${pingUserId}>`,
@@ -244,14 +219,14 @@ module.exports = function (client) {
       });
 
       await interaction.reply({
-        content: `✅ เปิดตั๋วสกินลายเส้น${skinName} แล้ว: ${channel}`,
+        content: `✅ เปิดตั๋วคอมมิชชั่นของ ${titleName} แล้ว: ${channel}`,
         ephemeral: true,
       });
     }
 
     if (interaction.customId === "delete_ticket") {
       try {
-        await interaction.deferUpdate();
+        await interaction.deferUpdate(); // ตอบรับแบบเงียบ
         await interaction.channel.delete().catch(console.error);
       } catch (err) {
         console.error(err);
