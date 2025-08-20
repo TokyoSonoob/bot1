@@ -38,6 +38,8 @@ require("./emoji")(client);
 require("./pro")(client);
 require("./boom")(client);
 require("./report")(client);
+require("./eiei")(client);
+require("./com")(client);
 const imageCollectorState = new Map();
 const restrictedChannels = new Set();
 async function getAttachmentsFromPermaLink(permaLink) {
