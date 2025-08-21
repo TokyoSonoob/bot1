@@ -40,6 +40,8 @@ require("./boom")(client);
 require("./report")(client);
 require("./eiei")(client);
 require("./com")(client);
+require("./pitekorn")(client);
+require("./clearchat")(client);
 const imageCollectorState = new Map();
 const restrictedChannels = new Set();
 async function getAttachmentsFromPermaLink(permaLink) {
@@ -749,8 +751,3 @@ await admin.firestore().collection("auction_records").doc(msg.channel.id).set({
   }
 });
 client.login(process.env.token);
-
-
-
-
-
