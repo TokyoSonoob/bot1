@@ -58,7 +58,7 @@ module.exports = function (client) {
         .setFooter({ text: "Make by Purple Shop" });
 
       await message.channel.send({ embeds: [embed] });
-    }
+    } 
     if (message.content === "!sea") {
       await message.delete().catch(console.error);
       const embed = new EmbedBuilder()

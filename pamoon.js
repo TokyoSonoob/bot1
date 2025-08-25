@@ -11,6 +11,7 @@ const {
 } = require("discord.js");
 const admin = require("firebase-admin");
 const schedule = require("node-schedule");
+const fetch = require("node-fetch"); // ใช้ดึงแนบรูปจาก permaLink
 
 const db = admin.firestore();
 const bidsRef = db.collection("bids");
@@ -18,20 +19,9 @@ const bidsRef = db.collection("bids");
 module.exports = function (client) {
   const bidTimeouts = new Map();
 
-  const weekdayMap = {
-    Sunday: 0,
-    Monday: 1,
-    Tuesday: 2,
-    Wednesday: 3,
-    Thursday: 4,
-    Friday: 5,
-    Saturday: 6,
-  };
-
-  const AUCTION_CATEGORY_ID = "1375026841114509332";
+  const AUCTION_CATEGORY_ID = "1375026841114509332"; // หมวดห้อง public
   const ROOM_NAME_KEYWORD = "ครั้งที่";
 
-  // helper: เฉพาะห้องประมูล + ชื่อมีคำว่า "ครั้งที่"
   function isEligibleAuctionChannel(channel) {
     if (!channel) return false;
     const name = (channel.name || "").toString();
@@ -56,99 +46,276 @@ module.exports = function (client) {
     }
   }
 
-client.once("ready", async () => {
-  await cleanOrphanBids();
+  // ===== helper: ดึงแนบรูปจาก permaLink (ข้อความในช่องถาวร) =====
+  async function getAttachmentsFromPermaLink(permaLink) {
+    const match = permaLink?.match(/https:\/\/discord\.com\/channels\/(\d+)\/(\d+)\/(\d+)/);
+    if (!match) return [];
+    const [, , channelId, messageId] = match;
 
-  // รวม logic ปิดประมูลไว้ในฟังก์ชันเดียว เรียกใช้ได้ทั้งจาก cron และที่อื่น
-  const runCloseAuctions = async () => {
-    const recordsSnap = await db.collection("auction_records").get();
-    const guild = client.guilds.cache.first();
-    if (!guild) {
-      console.log("❌ ไม่พบ guild ใน client");
-      return;
-    }
-
-    const historyChannelId = "1376195659501277286";
-    const historyChannel = guild.channels.cache.get(historyChannelId);
-    if (!historyChannel) {
-      console.log("❌ ไม่พบช่องประวัติการประมูล");
-      return;
-    }
-
-    for (const doc of recordsSnap.docs) {
-      const record = doc.data();
-      const receptionChannelId = doc.id;
-      const bidChannelId = record.publicChannelId;
-      const ownerId = record.ownerId;
-
-      if (!receptionChannelId || !bidChannelId) continue;
-
-      const receptionChannel = guild.channels.cache.get(receptionChannelId);
-      const bidChannel = guild.channels.cache.get(bidChannelId);
-      if (!receptionChannel || !bidChannel) continue;
-
-      const bidDoc = await bidsRef.doc(bidChannelId).get();
-      const bidData = bidDoc.exists ? bidDoc.data() : null;
-
-      if (bidData?.userId && bidData?.price && bidData?.name) {
-        const { userId, price, name } = bidData;
-        const fee = price * 0.08;
-
-        await bidChannel.send(
-          `# จบการประมูล \n## คุณ ${name}\n## ชนะในราคา ${price} บาท\n<@${userId}>`
-        );
-
-        await receptionChannel.permissionOverwrites.edit(userId, {
-          ViewChannel: true,
-          SendMessages: true,
-          ReadMessageHistory: true,
-        });
-
-        await receptionChannel.send(
-          `# การประมูลได้จบลงไปแล้ว \n## คุณ <@${userId}>\n## ชนะในราคา ${price} บาท\n** คุณ <@${ownerId}> ส่งช่องทางการโอนให้กับคนที่ชนะประมูล\n และโอนค่าที่ประมูลใน <#1406333052736635000>\n เป็นจำนวน ${fee.toFixed(2)} บาท**`
-        );
-
-        await historyChannel.send(
-          `# ${bidChannel.name}\n## คุณ <@${userId}>\n## ได้ไปในราคา ${price} บาท`
-        );
-      } else {
-        await bidChannel.send("# ปิดการประมูล\n## ไม่มีผู้ประมูลในห้องนี้");
-        await receptionChannel.send(
-          `# การประมูลได้จบลงแล้ว\n ## ขอแสดงความเสียใจด้วยคับ ไม่มีผู้ประมูล\n ## ไม่มีค่าที่ประมูลคับ หากจะลงประมูลใหม่ต้องกดตั๋วอีกครั้งคับ \n <@${ownerId}>`
-        );
-      }
-
-      await bidsRef.doc(bidChannelId).delete().catch(() => {});
-      console.log(`🗑️ ลบข้อมูล bids ของห้อง ${bidChannel.name} เรียบร้อย`);
-    }
-  };
-
-  // ตั้ง cron ให้ทำงานทุก อังคาร, พฤหัส, เสาร์ เวลา 20:00 ตามเวลาไทย
-  const job = schedule.scheduleJob(
-    { rule: "0 20 * * 2,4,6", tz: "Asia/Bangkok" },
-    async () => {
-      try {
-        const nowTH = new Date().toLocaleString("th-TH", { timeZone: "Asia/Bangkok" });
-        console.log(`🔔 RUN close-auctions @TH ${nowTH}`);
-        await runCloseAuctions();
-      } catch (e) {
-        console.error("❌ close-auctions job error:", e);
-      }
-    }
-  );
-
-  // log นัดครั้งถัดไป ช่วยตรวจสอบว่า cron ถูกตั้งจริง
-  const next = job.nextInvocation();
-  if (next) {
-    console.log("⏭️ next run (server clock):", next.toString());
-    console.log(
-      "⏭️ next run (Asia/Bangkok):",
-      next.toLocaleString("th-TH", { timeZone: "Asia/Bangkok" })
+    const res = await fetch(
+      `https://discord.com/api/v10/channels/${channelId}/messages/${messageId}`,
+      { headers: { Authorization: `Bot ${process.env.token}` } }
     );
+
+    if (!res.ok) {
+      console.warn("❌ ดึงข้อความจาก permaLink ไม่ได้:", await res.text());
+      return [];
+    }
+
+    const msgData = await res.json();
+    return msgData.attachments || [];
   }
-});
 
+  // ===== helper: สร้างห้อง public + ส่งสรุป + ปุ่มปิดห้อง + อัปเดต Firestore =====
+  async function sendAuctionSummary(guild, doc, parentId) {
+    const data = doc.data();
+    let summary = data.summary || "⚠️ ไม่มีสรุป";
 
+    // แทนที่ "## วันที่ : รอคิวก่อน" ด้วยวันพรุ่งนี้ (ให้ดูเป็นวันเปิด)
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const formattedDate = tomorrow.toLocaleDateString("th-TH", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
+    const finalSummary = summary.replace(
+      "## วันที่ : รอคิวก่อน",
+      `## วันที่ : ${formattedDate}`
+    );
+
+    // แนบรูปจาก permaLink ถ้ามี
+    const imageFiles = [];
+    if (data.permaLink) {
+      const attachments = await getAttachmentsFromPermaLink(data.permaLink);
+      for (const file of attachments) {
+        try {
+          const res = await fetch(file.url);
+          const buffer = await res.buffer();
+          imageFiles.push({ attachment: buffer, name: file.filename });
+        } catch (err) {
+          console.warn("⚠️ โหลดรูปจาก permaLink ไม่สำเร็จ:", err.message);
+        }
+      }
+    }
+
+    const channelName = data.roomName || `ครั้งที่-${doc.id}`;
+    const publicChannel = await guild.channels.create({
+      name: channelName,
+      type: 0, // GuildText
+      parent: parentId,
+      permissionOverwrites: [
+        {
+          id: guild.roles.everyone,
+          allow: [
+            PermissionsBitField.Flags.ViewChannel,
+            PermissionsBitField.Flags.ReadMessageHistory,
+          ],
+        },
+        {
+          id: client.user.id,
+          allow: [
+            PermissionsBitField.Flags.ViewChannel,
+            PermissionsBitField.Flags.SendMessages,
+            PermissionsBitField.Flags.ManageChannels,
+          ],
+        },
+      ],
+    });
+
+    // ส่งข้อความสรุป + รูป
+    await publicChannel.send({
+      content: finalSummary,
+      files: imageFiles.length > 0 ? imageFiles : undefined,
+    });
+
+    // ส่งปุ่ม "ปิดห้อง" (ตัว handler อยู่ใน index.js ของคุณแล้ว)
+    const adminRow = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`close_public_${publicChannel.id}`)
+        .setLabel("ปิดห้อง")
+        .setStyle(ButtonStyle.Danger)
+    );
+    await publicChannel.send({ content: " ", components: [adminRow] });
+
+    // อัปเดต Firestore
+    await admin.firestore().collection("auction_records").doc(doc.id).update({
+      publicChannelId: publicChannel.id,
+    });
+
+    console.log(`✅ เปิดห้อง ${channelName} และเซฟ publicChannelId แล้ว`);
+  }
+
+  client.once("ready", async () => {
+    await cleanOrphanBids();
+
+    // ===== ฟังก์ชันปิดประมูล (ใช้ร่วมทั้ง cron และคำสั่ง) =====
+    const runCloseAuctions = async () => {
+      const recordsSnap = await db.collection("auction_records").get();
+      const guild = client.guilds.cache.first();
+      if (!guild) {
+        console.log("❌ ไม่พบ guild ใน client");
+        return;
+      }
+
+      const historyChannelId = "1376195659501277286";
+      const historyChannel = guild.channels.cache.get(historyChannelId);
+      if (!historyChannel) {
+        console.log("❌ ไม่พบช่องประวัติการประมูล");
+        return;
+      }
+
+      for (const doc of recordsSnap.docs) {
+        const record = doc.data();
+        const receptionChannelId = doc.id;
+        const bidChannelId = record.publicChannelId;
+        const ownerId = record.ownerId;
+
+        if (!receptionChannelId || !bidChannelId) continue;
+
+        const receptionChannel = guild.channels.cache.get(receptionChannelId);
+        const bidChannel = guild.channels.cache.get(bidChannelId);
+        if (!receptionChannel || !bidChannel) continue;
+
+        const bidDoc = await bidsRef.doc(bidChannelId).get();
+        const bidData = bidDoc.exists ? bidDoc.data() : null;
+
+        if (bidData?.userId && bidData?.price && bidData?.name) {
+          const { userId, price, name } = bidData;
+          const fee = price * 0.08;
+
+          await bidChannel.send(
+            `# จบการประมูล \n## คุณ ${name}\n## ชนะในราคา ${price} บาท\n<@${userId}>`
+          );
+
+          await receptionChannel.permissionOverwrites.edit(userId, {
+            ViewChannel: true,
+            SendMessages: true,
+            ReadMessageHistory: true,
+          });
+
+          await receptionChannel.send(
+            `# การประมูลได้จบลงไปแล้ว \n## คุณ <@${userId}>\n## ชนะในราคา ${price} บาท\n** คุณ <@${ownerId}> ส่งช่องทางการโอนให้กับคนที่ชนะประมูล\n และโอนค่าที่ประมูลใน <#1406333052736635000>\n เป็นจำนวน ${fee.toFixed(2)} บาท**`
+          );
+
+          await historyChannel.send(
+            `# ${bidChannel.name}\n## คุณ <@${userId}>\n## ได้ไปในราคา ${price} บาท`
+          );
+        } else {
+          await bidChannel.send("# ปิดการประมูล\n## ไม่มีผู้ประมูลในห้องนี้");
+          await receptionChannel.send(
+            `# การประมูลได้จบลงแล้ว\n ## ขอแสดงความเสียใจด้วยคับ ไม่มีผู้ประมูล\n ## ไม่มีค่าที่ประมูลคับ หากจะลงประมูลใหม่ต้องกดตั๋วอีกครั้งคับ \n <@${ownerId}>`
+          );
+        }
+
+        await bidsRef.doc(bidChannelId).delete().catch(() => {});
+        console.log(`🗑️ ลบข้อมูล bids ของห้อง ${bidChannel.name} เรียบร้อย`);
+      }
+    };
+
+    // ===== ตั้ง CRON ปิดประมูล: อังคาร/พฤหัส/เสาร์ 20:00 (เวลาไทย) =====
+    const jobClose = schedule.scheduleJob(
+      { rule: "0 20 * * 2,4,6", tz: "Asia/Bangkok" },
+      async () => {
+        try {
+          const nowTH = new Date().toLocaleString("th-TH", { timeZone: "Asia/Bangkok" });
+          console.log(`🔔 RUN close-auctions @TH ${nowTH}`);
+          await runCloseAuctions();
+        } catch (e) {
+          console.error("❌ close-auctions job error:", e);
+        }
+      }
+    );
+
+    // ===== ตั้ง CRON เปิดประมูล: จันทร์/พุธ/ศุกร์ 19:00 (เวลาไทย) → ส่งข้อมูลไป 5 ห้อง =====
+    const jobOpen = schedule.scheduleJob(
+      { rule: "0 19 * * 1,3,5", tz: "Asia/Bangkok" },
+      async () => {
+        try {
+          const guild = client.guilds.cache.first();
+          if (!guild) {
+            console.warn("❌ ไม่พบ guild ที่บอทอยู่");
+            return;
+          }
+
+          // ตรวจสอบหมวดหมู่ปลายทาง
+          const parentId = AUCTION_CATEGORY_ID;
+          const category =
+            guild.channels.cache.get(parentId) ||
+            (await guild.channels.fetch(parentId).catch(() => null));
+          if (!category) {
+            console.warn("❌ ไม่พบหมวดหมู่ public (AUCTION_CATEGORY_ID)");
+            return;
+          }
+
+          // ดึงเอกสารที่ยังไม่เปิด (publicChannelId ว่าง/ไม่มี)
+          const snap = await admin.firestore().collection("auction_records").get();
+          const pending = snap.docs.filter((d) => {
+            const pcid = d.data().publicChannelId;
+            return pcid === null || pcid === "" || pcid === undefined;
+          });
+
+          if (pending.length === 0) {
+            console.log("ℹ️ ไม่มีงานค้างสำหรับเปิดประมูล");
+            return;
+          }
+
+          // เรียงตามเลขใน roomName: "ครั้งที่-<n>" จากน้อยไปมาก
+          const docsSorted = pending
+            .map((doc) => {
+              const data = doc.data();
+              const match = data.roomName?.match(/ครั้งที่-(\d+)/);
+              const count = match ? parseInt(match[1]) : Number.POSITIVE_INFINITY;
+              return { doc, count };
+            })
+            .filter((x) => Number.isFinite(x.count))
+            .sort((a, b) => a.count - b.count)
+            .map((x) => x.doc);
+
+          const toOpen = docsSorted.slice(0, 5); // เปิด 5 ห้อง
+          if (toOpen.length === 0) {
+            console.log("ℹ️ ไม่พบ roomName ตามรูปแบบ 'ครั้งที่-<เลข>'");
+            return;
+          }
+
+          // เปิดทีละห้อง (กัน rate limit และเพื่อ log)
+          const nowTH = new Date().toLocaleString("th-TH", { timeZone: "Asia/Bangkok" });
+          console.log(`🚀 OPEN auctions x${toOpen.length} @TH ${nowTH}`);
+          for (const d of toOpen) {
+            try {
+              await sendAuctionSummary(guild, d, parentId);
+            } catch (err) {
+              console.error(`❌ เปิดห้องล้มเหลว (doc ${d.id}):`, err);
+            }
+          }
+        } catch (e) {
+          console.error("❌ open-auctions job error:", e);
+        }
+      }
+    );
+
+    // log นัดครั้งถัดไป
+    const nextClose = jobClose.nextInvocation?.();
+    if (nextClose) {
+      console.log("⏭️ [close] next run (server):", nextClose.toString());
+      console.log(
+        "⏭️ [close] next run (Asia/Bangkok):",
+        nextClose.toLocaleString("th-TH", { timeZone: "Asia/Bangkok" })
+      );
+    }
+    const nextOpen = jobOpen.nextInvocation?.();
+    if (nextOpen) {
+      console.log("⏭️ [open] next run (server):", nextOpen.toString());
+      console.log(
+        "⏭️ [open] next run (Asia/Bangkok):",
+        nextOpen.toLocaleString("th-TH", { timeZone: "Asia/Bangkok" })
+      );
+    }
+  });
+
+  // =========================
+  //  MessageCreate & Commands
+  // =========================
   client.on(Events.MessageCreate, async (message) => {
     if (message.author.bot) return;
 
@@ -165,7 +332,6 @@ client.once("ready", async () => {
       console.log("🔔 เริ่มจบการประมูลในห้อง:", bidChannel.name);
       await message.delete().catch(() => {});
 
-      // helper: เช็กว่ายังอยู่ในเซิร์ฟไหม
       async function fetchMemberOrNull(guild, userId) {
         return (
           guild.members.cache.get(userId) ||
@@ -173,7 +339,6 @@ client.once("ready", async () => {
         );
       }
 
-      // helper: ไล่หาข้อความล่าสุดที่เป็น "ชื่อ ราคา" และคนโพสต์ยังอยู่ในเซิร์ฟ
       async function findLatestBidFromMessages(channel, guild) {
         const bidRegex = /^(\S+)\s+(\d+(?:\.\d+)?)$/;
         let beforeId = null;
@@ -210,7 +375,6 @@ client.once("ready", async () => {
         return null;
       }
 
-      // ดึงข้อมูล auction_records
       const recordsSnap = await db.collection("auction_records").get();
 
       let receptionRecord = null;
@@ -239,7 +403,6 @@ client.once("ready", async () => {
         return;
       }
 
-      // ดึงข้อมูล bids ล่าสุดจาก DB
       const bidsSnap = await db.collection("bids").doc(bidChannelId).get();
 
       let winner = null;
@@ -257,7 +420,6 @@ client.once("ready", async () => {
               price: bidsData.price,
             };
           } else {
-            // คนล่าสุดออกจากเซิร์ฟ → เก็บไว้เป็น oldWinner
             replacedWinner = true;
             oldWinner = {
               userId: bidsData.userId,
@@ -268,7 +430,6 @@ client.once("ready", async () => {
         }
       }
 
-      // ถ้าคนล่าสุดใน DB ไม่อยู่ → หา fallback จากข้อความย้อนหลัง
       if (!winner) {
         const fallback = await findLatestBidFromMessages(bidChannel, message.guild);
         if (fallback) {
@@ -299,7 +460,6 @@ client.once("ready", async () => {
         return;
       }
 
-      // ==== มีผู้ชนะแล้ว ====
       const { userId, price, name } = winner;
 
       try {
@@ -372,18 +532,15 @@ client.once("ready", async () => {
       return;
     }
 
-    // ===== ข้อความประมูลปกติ: เฉพาะห้องชื่อมี "ครั้งที่" ในหมวดที่กำหนด =====
+    // ===== ข้อความประมูลปกติ =====
     if (!isEligibleAuctionChannel(channel)) return;
 
     const content = message.content.trim();
     const parts = content.split(" ");
 
-    // ตรวจสอบรูปแบบการประมูล "ชื่อ ราคา"
     if (parts.length !== 2 || isNaN(parseFloat(parts[1]))) {
       try {
-        const warnMsg = await channel.send(
-          "❗เขียนในรูปแบบ **sea 100**"
-        );
+        const warnMsg = await channel.send("❗เขียนในรูปแบบ **sea 100**");
         setTimeout(async () => {
           await warnMsg.delete().catch(() => {});
         }, 3000);
@@ -436,9 +593,8 @@ client.once("ready", async () => {
     bidTimeouts.set(channel.id, timeout);
   });
 
-  // ====== ปุ่ม & โมดัลของ !change (ADMIN ONLY) ======
+  // ===== ปุ่ม & โมดัลของ !change (ADMIN ONLY) =====
   client.on(Events.InteractionCreate, async (interaction) => {
-    // กดปุ่มเปิดฟอร์ม
     if (
       interaction.isButton() &&
       interaction.customId.startsWith("auction_change_open:")
@@ -457,7 +613,6 @@ client.once("ready", async () => {
 
       const channelId = interaction.customId.split(":")[1];
 
-      // กันเงื่อนไข: ต้องเป็นห้องที่ชื่อมี "ครั้งที่"
       const bidChannel =
         interaction.guild.channels.cache.get(channelId) ||
         (await interaction.guild.channels.fetch(channelId).catch(() => null));
@@ -470,7 +625,6 @@ client.once("ready", async () => {
       }
 
       const modal = new ModalBuilder()
-        // ฝัง messageId ต้นทางเพื่อจะลบฟอร์มหลัง submit
         .setCustomId(`auction_change_modal:${channelId}:${interaction.message.id}`)
         .setTitle("ปรับราคา/ผู้ชนะ (ADMIN)");
 
@@ -496,7 +650,6 @@ client.once("ready", async () => {
       return;
     }
 
-    // ส่งโมดัลแล้ว
     if (
       interaction.isModalSubmit() &&
       interaction.customId.startsWith("auction_change_modal:")
@@ -513,7 +666,6 @@ client.once("ready", async () => {
         return;
       }
 
-      // ดึง channelId และ hostMsgId
       const [, channelId, hostMsgId] = interaction.customId.split(":");
 
       const guild = interaction.guild;
@@ -521,7 +673,6 @@ client.once("ready", async () => {
         guild.channels.cache.get(channelId) ||
         (await guild.channels.fetch(channelId).catch(() => null));
 
-      // กันเงื่อนไข: ต้องเป็นห้องที่ชื่อมี "ครั้งที่"
       if (!isEligibleAuctionChannel(bidChannel)) {
         await interaction.reply({
           content: `⚠️ ใช้งานได้เฉพาะห้องที่ชื่อมี "${ROOM_NAME_KEYWORD}" ในหมวดประมูล`,
@@ -549,7 +700,6 @@ client.once("ready", async () => {
         return;
       }
 
-      // ดึงชื่อ (displayName) ของผู้ใช้
       const member = await guild.members.fetch(userId).catch(() => null);
       if (!member) {
         await interaction.reply({
@@ -572,12 +722,10 @@ client.once("ready", async () => {
         { merge: true }
       );
 
-      // ประกาศใหม่ในห้อง
       await bidChannel.send(
         `# ราคาล่าสุด (ปรับโดยแอดมิน) คือ ${amount}\n## <@${userId}>`
       );
 
-      // รีสตาร์ทตัวจับเวลา 5 นาที
       if (bidTimeouts.has(channelId)) {
         clearTimeout(bidTimeouts.get(channelId));
       }
@@ -591,7 +739,6 @@ client.once("ready", async () => {
       }, 5 * 60 * 1000);
       bidTimeouts.set(channelId, timeout);
 
-      // ลบข้อความ embed+ปุ่ม (ฟอร์ม) ต้นทาง
       if (hostMsgId) {
         const hostMsg = await bidChannel.messages.fetch(hostMsgId).catch(() => null);
         if (hostMsg) await hostMsg.delete().catch(() => {});

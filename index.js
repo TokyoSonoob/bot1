@@ -35,6 +35,7 @@ require("./send")(client);
 require("./pamoon")(client);
 require("./ticket")(client);
 require("./emoji")(client);
+require("./embed")(client);
 require("./pro")(client);
 require("./boom")(client);
 require("./report")(client);

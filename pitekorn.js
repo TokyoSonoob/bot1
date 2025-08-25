@@ -5,7 +5,7 @@ const { Events, ChannelType } = require("discord.js");
 module.exports = (client) => {
   const CATEGORY_ID = "1375026841114509332";
   // จับ "ชื่อ เลข" เช่น "sea 100" หรือ "เนจิ 50" (จำนวนเต็ม)
-  const NAME_NUMBER_REGEX = /^\s*([\p{L}\p{N}_.\-]+)\s+(\d+)\s*$/u;
+  const NAME_NUMBER_REGEX = /^(\S+)\s+(\d+(?:\.\d+)?)$/;
 
   // กันซ้ำ: ถ้าช่องใดประกาศ “คนแรก” ไปแล้ว จะไม่ประกาศซ้ำอีก
   const claimedChannels = new Set();
