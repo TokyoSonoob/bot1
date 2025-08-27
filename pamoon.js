@@ -46,6 +46,33 @@ module.exports = function (client) {
     }
   }
 
+  // 🆕 helper: ล็อกและซ่อนห้องประมูลหลังประกาศผู้ชนะ
+  async function lockAndHideChannel(channel, guild) {
+    try {
+      // ปิดการเข้าถึงของ @everyone
+      await channel.permissionOverwrites.edit(guild.roles.everyone, {
+        ViewChannel: false,
+        SendMessages: false,
+        ReadMessageHistory: false,
+      });
+      // คงสิทธิ์ให้บอทเผื่อแก้ไข/ส่งข้อความได้
+      await channel.permissionOverwrites.edit(client.user.id, {
+        ViewChannel: true,
+        SendMessages: true,
+        ReadMessageHistory: true,
+        ManageChannels: true,
+      });
+      // เคลียร์ timeout ของห้องนี้ถ้ามี
+      if (bidTimeouts.has(channel.id)) {
+        clearTimeout(bidTimeouts.get(channel.id));
+        bidTimeouts.delete(channel.id);
+      }
+      console.log(`🔒 ล็อกและซ่อนห้องเรียบร้อย: ${channel.name}`);
+    } catch (e) {
+      console.error("❌ ล็อก/ซ่อนห้องล้มเหลว:", e);
+    }
+  }
+
   // ===== helper: ดึงแนบรูปจาก permaLink (ข้อความในช่องถาวร) =====
   async function getAttachmentsFromPermaLink(permaLink) {
     const match = permaLink?.match(/https:\/\/discord\.com\/channels\/(\d+)\/(\d+)\/(\d+)/);
@@ -208,8 +235,12 @@ module.exports = function (client) {
           );
         }
 
+        // ลบข้อมูล bids
         await bidsRef.doc(bidChannelId).delete().catch(() => {});
         console.log(`🗑️ ลบข้อมูล bids ของห้อง ${bidChannel.name} เรียบร้อย`);
+
+        // 🆕 ล็อกและซ่อนห้องประมูลหลังประกาศผล
+        await lockAndHideChannel(bidChannel, guild);
       }
     };
 
@@ -457,6 +488,9 @@ module.exports = function (client) {
         );
         await db.collection("bids").doc(bidChannelId).delete().catch(() => {});
         console.warn("⚠️ ไม่มีผู้ชนะที่ยังอยู่:", bidChannelId);
+
+        // 🆕 ล็อกและซ่อนห้องแม้ไม่มีผู้ชนะ
+        await lockAndHideChannel(bidChannel, message.guild);
         return;
       }
 
@@ -485,8 +519,8 @@ module.exports = function (client) {
         );
 
         await db.collection("bids").doc(bidChannelId).delete().catch(() => {});
-
         console.log("✅ จบการประมูลเรียบร้อย");
+
         const historyChannelId = "1376195659501277286";
         const historyChannel = message.guild.channels.cache.get(historyChannelId);
         if (historyChannel) {
@@ -494,6 +528,10 @@ module.exports = function (client) {
             `# ${bidChannel.name}\n## คุณ <@${userId}>\n ## ได้ไปในราคา ${price} บาท`
           );
         }
+
+        // 🆕 ล็อกและซ่อนห้องหลังประกาศผู้ชนะ
+        await lockAndHideChannel(bidChannel, message.guild);
+
       } catch (err) {
         console.error("❌ เกิดข้อผิดพลาด:", err);
         await message.channel
