@@ -43,6 +43,7 @@ require("./eiei")(client);
 require("./com")(client);
 require("./pitekorn")(client);
 require("./clearchat")(client);
+require("./everyone")(client);
 const imageCollectorState = new Map();
 const restrictedChannels = new Set();
 async function getAttachmentsFromPermaLink(permaLink) {
