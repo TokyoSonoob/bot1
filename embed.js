@@ -1,4 +1,7 @@
-// embed.js
+// embed_fix_s.js
+// รวม /embed /fix /s ไว้ในโมดูลเดียว (discord.js v14)
+// ต้องมี process.env.TOKEN (โหลด .env ใน index.js ก่อน require โมดูลนี้)
+
 module.exports = (client) => {
   const {
     REST,
@@ -9,53 +12,47 @@ module.exports = (client) => {
     TextInputStyle,
     ActionRowBuilder,
     EmbedBuilder,
-    ButtonBuilder,
-    ButtonStyle,
+    PermissionsBitField,
   } = require("discord.js");
 
+  // =====[ Const ]=====
   const CMD_EMBED = "embed";
-  const CMD_BOTTON = "botton"; // ตามที่ขอ
-  const MODAL_EMBED = "embed_form_modal";
-  const MODAL_BOTTON_PREFIX = "btn_form:"; // ต่อท้าย messageId
+  const CMD_FIX = "fix";
+  const CMD_S = "s";
 
-  // ลงทะเบียน Slash Commands เมื่อบอทพร้อม
+  const MODAL_EMBED = "embed_form_modal";
+  const CREDIT_MSG = '@everyone \n# ฝากให้เครดิตที่ <#1371394966265270323>  ด้วยน้าาา';
+
+  // 🔥 U+1F525 , ⏳ U+23F3 (+ optional FE0E/FE0F)
+  // ตัดคำนำหน้าที่เป็น 🔥 หรือ ⏳/⏳️ + ขีดทุกชนิด + ช่องว่างยูนิโค้ดออกจาก "หน้าสุด"
+  const STRIP_PREFIX_RE =
+    /^(?:\u{1F525}|\u{23F3}[\uFE0E\uFE0F]?)+(?:[\p{Zs}]*(?:[\p{Pd}])+)?[\p{Zs}]*/u;
+
+  // helper: ลบ variation selectors เพื่อเช็คขึ้นต้นแบบนิ่ง ๆ
+  const normalizeEmojiLeading = (s) => s.replace(/^[\uFE0E\uFE0F]+/, "");
+
+  // =====[ Register Slash Commands (per guild) ]=====
   client.once(Events.ClientReady, async () => {
     try {
-      const rest = new REST({ version: "10" }).setToken(TOKEN);
+      const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
       const appId = client.application?.id ?? client.user.id;
 
       const commands = [
-        {
-          name: CMD_EMBED,
-          description: "เปิดฟอร์มเพื่อส่ง Embed",
-          dm_permission: false,
-        },
-        {
-          name: CMD_BOTTON,
-          description: "เพิ่มปุ่มลิงก์ให้ข้อความ embed ของบอท (ระบุ IDembed)",
-          dm_permission: false,
-          options: [
-            {
-              type: 3, // STRING
-              name: "idembed",
-              description: "Message ID ของข้อความบอท (ในห้องนี้)",
-              required: true,
-            },
-          ],
-        },
+        { name: CMD_EMBED, description: "เปิดฟอร์มเพื่อส่ง Embed", dm_permission: false },
+        { name: CMD_FIX, description: "แก้คำนำหน้า 🔥/⏳️ ของชื่อห้อง", dm_permission: false },
+        { name: CMD_S, description: "ลบคำนำหน้าแล้วส่งเครดิตพร้อม @everyone", dm_permission: false },
       ];
 
       for (const [guildId] of client.guilds.cache) {
-        await rest.put(Routes.applicationGuildCommands(appId, guildId), {
-          body: commands,
-        });
-        console.log(`✅ Registered /${CMD_EMBED} & /${CMD_BOTTON} in ${guildId}`);
+        await rest.put(Routes.applicationGuildCommands(appId, guildId), { body: commands });
+        console.log(`✅ Registered /${CMD_EMBED}, /${CMD_FIX}, /${CMD_S} in ${guildId}`);
       }
     } catch (err) {
       console.error("❌ Command registration error:", err);
     }
   });
 
+  // =====[ Utils ]=====
   const safeReply = async (interaction, payload) => {
     try {
       if (interaction.deferred || interaction.replied) return await interaction.followUp(payload);
@@ -63,9 +60,28 @@ module.exports = (client) => {
     } catch {}
   };
 
+  const canManageChannel = (guild, channel) => {
+    const me = guild?.members?.me;
+    if (!me) return false;
+    return (
+      me.permissionsIn(channel)?.has(PermissionsBitField.Flags.ManageChannels) ||
+      me.permissions?.has(PermissionsBitField.Flags.ManageChannels)
+    );
+  };
+
+  const canMentionEveryone = (guild, channel) => {
+    const me = guild?.members?.me;
+    if (!me) return false;
+    return (
+      me.permissionsIn(channel)?.has(PermissionsBitField.Flags.MentionEveryone) ||
+      me.permissions?.has(PermissionsBitField.Flags.MentionEveryone)
+    );
+  };
+
+  // =====[ Single Interaction Handler ]=====
   client.on(Events.InteractionCreate, async (interaction) => {
     try {
-      // /embed -> เปิดฟอร์ม
+      // ---------- /embed ----------
       if (interaction.isChatInputCommand() && interaction.commandName === CMD_EMBED) {
         const modal = new ModalBuilder().setCustomId(MODAL_EMBED).setTitle("สร้าง Embed");
 
@@ -75,7 +91,7 @@ module.exports = (client) => {
 
         const descInput = new TextInputBuilder()
           .setCustomId("message").setLabel("ข้อความ")
-          .setStyle(TextInputStyle.Paragraph).setRequired(true).setMaxLength(4000); // เพดาน Modal
+          .setStyle(TextInputStyle.Paragraph).setRequired(true).setMaxLength(4000);
 
         const imageInput = new TextInputBuilder()
           .setCustomId("image").setLabel("ลิงก์รูปภาพ (ไม่บังคับ)")
@@ -91,43 +107,124 @@ module.exports = (client) => {
         return;
       }
 
-      // /botton idembed -> เปิดฟอร์มตั้งค่าปุ่ม (ไม่มีสี)
-      if (interaction.isChatInputCommand() && interaction.commandName === CMD_BOTTON) {
-        const messageId = interaction.options.getString("idembed", true);
+      // ---------- /fix ----------
+      if (interaction.isChatInputCommand() && interaction.commandName === CMD_FIX) {
+        if (!interaction.deferred && !interaction.replied) {
+          await interaction.deferReply({ flags: 1 << 6 }); // EPHEMERAL
+        }
 
-        const modal = new ModalBuilder()
-          .setCustomId(`${MODAL_BOTTON_PREFIX}${messageId}`)
-          .setTitle("ตั้งค่าปุ่มลิงก์");
+        if (!interaction.guild || !interaction.channel) {
+          await interaction.editReply("❌ ใช้ในเซิร์ฟเวอร์เท่านั้น");
+          return;
+        }
 
-        const labelInput = new TextInputBuilder()
-          .setCustomId("label").setLabel("ชื่อปุ่ม")
-          .setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(80);
+        const channel = interaction.channel;
+        if (typeof channel.setName !== "function") {
+          await interaction.editReply("❌ ห้องนี้เปลี่ยนชื่อไม่ได้ (เช่น Thread/Forum)");
+          return;
+        }
 
-        const urlInput = new TextInputBuilder()
-          .setCustomId("url").setLabel("ลิงก์ (http:// หรือ https://)")
-          .setStyle(TextInputStyle.Short).setRequired(true);
+        const before = channel.name || "";
+        const norm = normalizeEmojiLeading(before);
 
-        modal.addComponents(
-          new ActionRowBuilder().addComponents(labelInput),
-          new ActionRowBuilder().addComponents(urlInput)
-        );
+        const startsFire = /^\u{1F525}/u.test(norm);
+        const startsHourglass = /^\u{23F3}/u.test(norm); // normalize แล้ว ไม่ต้องสน VS
 
-        await interaction.showModal(modal);
+        let after = before;
+        if (startsFire) {
+          // 🔥... -> ⏳️...
+          after = before.replace(/^\u{1F525}[\uFE0E\uFE0F]?/u, "⏳️").replace(/^\u{1F525}+/u, "⏳️");
+        } else if (!startsHourglass) {
+          // ไม่ขึ้นด้วย 🔥 หรือ ⏳ → เติม ⏳️-
+          after = `⏳️-${before}`;
+        }
+
+        if (after === before) {
+          await interaction.editReply("ℹ️ ไม่มีการเปลี่ยนแปลงชื่อห้อง");
+          return;
+        }
+
+        if (!canManageChannel(interaction.guild, channel)) {
+          await interaction.editReply("❌ บอทไม่มีสิทธิ์ Manage Channels จึงเปลี่ยนชื่อห้องไม่ได้");
+          return;
+        }
+
+        try {
+          await channel.setName(after, "fix prefix 🔥 → ⏳️ หรือเติม ⏳️-");
+          await interaction.editReply(`✅ เปลี่ยนชื่อห้องแล้ว\nก่อน: \`${before}\`\nหลัง:  \`${after}\``);
+        } catch (e) {
+          console.error("setName(/fix) error:", e);
+          await interaction.editReply("❌ เปลี่ยนชื่อห้องไม่สำเร็จ");
+        }
         return;
       }
 
-      // Submit: /embed
+      // ---------- /s ----------
+      if (interaction.isChatInputCommand() && interaction.commandName === CMD_S) {
+        if (!interaction.deferred && !interaction.replied) {
+          await interaction.deferReply({ flags: 1 << 6 }); // EPHEMERAL
+        }
+
+        if (!interaction.guild || !interaction.channel) {
+          await interaction.editReply("❌ ใช้ในเซิร์ฟเวอร์เท่านั้น");
+          return;
+        }
+
+        const channel = interaction.channel;
+        const before = channel.name || "";
+        const after = before.replace(STRIP_PREFIX_RE, ""); // ตัดได้ทั้ง 🔥 และ ⏳/⏳️ (+ขีด/ช่องว่าง)
+
+        if (after !== before && typeof channel.setName === "function") {
+          if (!canManageChannel(interaction.guild, channel)) {
+            await interaction.editReply("⚠️ บอทไม่มีสิทธิ์ Manage Channels เลยเปลี่ยนชื่อห้องไม่ได้ แต่จะส่งข้อความให้แทน");
+          } else {
+            try {
+              await channel.setName(after, "remove leading 🔥/⏳ by /s");
+            } catch (e) {
+              console.error("setName(/s) error:", e);
+              await interaction.editReply("⚠️ เปลี่ยนชื่อห้องไม่สำเร็จ แต่จะส่งข้อความแทน");
+            }
+          }
+        }
+
+        // ส่งเครดิต + @everyone (ถ้ามีสิทธิ์ MentionEveryone)
+        const allowPing = canMentionEveryone(interaction.guild, channel);
+        try {
+          await channel.send({
+            content: CREDIT_MSG,
+            allowedMentions: allowPing ? { parse: ["everyone"] } : { parse: [] },
+          });
+
+          const msg =
+            after === before
+              ? "✅ ส่งข้อความแล้ว (ไม่พบคำนำหน้า 🔥/⏳ ให้ลบ)"
+              : `✅ เปลี่ยนชื่อห้อง: \`${before}\` → \`${after}\`\nและส่งข้อความแล้ว`;
+
+          await interaction.editReply(
+            allowPing ? msg : `${msg}\nℹ️ แต่บอทไม่มีสิทธิ์ Mention @everyone ในห้องนี้ จึงไม่พิงก์`
+          );
+        } catch (e) {
+          console.error("channel.send error:", e);
+          await interaction.editReply("❌ ส่งข้อความไม่สำเร็จ");
+        }
+        return;
+      }
+
+      // ---------- Modal Submit: /embed ----------
       if (interaction.isModalSubmit() && interaction.customId === MODAL_EMBED) {
+        if (!interaction.deferred && !interaction.replied) {
+          await interaction.deferReply({ flags: 1 << 6 });
+        }
+
         const title = interaction.fields.getTextInputValue("title").trim();
         const message = interaction.fields.getTextInputValue("message").trim();
         const image = (interaction.fields.getTextInputValue("image") || "").trim();
 
         const embed = new EmbedBuilder()
           .setTitle(title)
-          .setDescription(message.slice(0, 4096)) // Embed รองรับ 4096
+          .setDescription(message.slice(0, 4096))
           .setColor(0x9b59b6)
           .setTimestamp()
-          // ✅ Footer คงที่เสมอ
           .setFooter({ text: "Make by Purple Shop" });
 
         let warn = "";
@@ -138,69 +235,21 @@ module.exports = (client) => {
         }
 
         if (!interaction.channel?.send) {
-          await safeReply(interaction, { content: "❌ ไม่สามารถส่งในห้องนี้ได้", flags: 1 << 6 });
+          await interaction.editReply("❌ ไม่สามารถส่งในห้องนี้ได้");
           return;
         }
 
         await interaction.channel.send({ embeds: [embed] });
-        await safeReply(interaction, { content: `✅ ส่ง Embed แล้ว${warn ? `\n${warn}` : ""}`, flags: 1 << 6 });
-        return;
-      }
-
-      // Submit: /botton (เพิ่มปุ่มลิงก์)
-      if (interaction.isModalSubmit() && interaction.customId.startsWith(MODAL_BOTTON_PREFIX)) {
-        const messageId = interaction.customId.slice(MODAL_BOTTON_PREFIX.length);
-
-        const label = interaction.fields.getTextInputValue("label").trim();
-        const url = interaction.fields.getTextInputValue("url").trim();
-
-        // ตรวจ URL
-        const isUrl = /^https?:\/\/\S{3,}/i.test(url);
-        if (!isUrl) {
-          await safeReply(interaction, { content: "❌ ลิงก์ไม่ถูกต้อง ต้องขึ้นต้นด้วย http:// หรือ https://", flags: 1 << 6 });
-          return;
-        }
-
-        // ดึงข้อความเป้าหมาย (ในห้องเดียวกัน)
-        let targetMsg = null;
-        try {
-          targetMsg = await interaction.channel.messages.fetch(messageId);
-        } catch {
-          await safeReply(interaction, { content: "❌ หา Message ID นี้ไม่เจอในห้องนี้", flags: 1 << 6 });
-          return;
-        }
-
-        // ต้องเป็นข้อความของบอทตัวเองเท่านั้นถึงจะแก้ไขได้
-        if (targetMsg.author.id !== client.user.id) {
-          await safeReply(interaction, { content: "❌ ข้อความนี้ไม่ใช่ของบอท จึงใส่ปุ่มให้ไม่ได้", flags: 1 << 6 });
-          return;
-        }
-
-        const linkButton = new ButtonBuilder()
-          .setLabel(label)
-          .setStyle(ButtonStyle.Link)
-          .setURL(url);
-
-        const existRows = targetMsg.components ?? [];
-        if (existRows.length >= 5) {
-          await safeReply(interaction, { content: "⚠️ ข้อความนี้มี Action Row ครบ 5 แถวแล้ว ไม่สามารถเพิ่มได้", flags: 1 << 6 });
-          return;
-        }
-
-        const newRows = [...existRows, new ActionRowBuilder().addComponents(linkButton)];
-
-        await targetMsg.edit({
-          content: targetMsg.content ?? undefined,
-          embeds: targetMsg.embeds ?? undefined,
-          components: newRows,
-        });
-
-        await safeReply(interaction, { content: "✅ ใส่ปุ่มลิงก์สำเร็จ!", flags: 1 << 6 });
+        await interaction.editReply(`✅ ส่ง Embed แล้ว${warn ? `\n${warn}` : ""}`);
         return;
       }
     } catch (err) {
-      console.error("Error in handlers:", err);
-      await safeReply(interaction, { content: "❌ มีข้อผิดพลาด ลองใหม่อีกครั้ง", flags: 1 << 6 });
+      console.error("❌ Error in handlers:", err);
+      if (interaction.deferred) {
+        await interaction.editReply("❌ มีข้อผิดพลาด ลองใหม่อีกครั้ง");
+      } else {
+        await safeReply(interaction, { content: "❌ มีข้อผิดพลาด ลองใหม่อีกครั้ง", flags: 1 << 6 });
+      }
     }
   });
 };
