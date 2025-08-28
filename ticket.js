@@ -61,7 +61,7 @@ function createFormButton() {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId("open_form")
-      .setLabel("กรอกข้อมูลเพิ่มเติม ใครไม่กรอกเป็นเก")
+      .setLabel('กรอกข้อมูลเพิ่ม!! กดตรงนี้ กดดดดดดดด')
       .setStyle(ButtonStyle.Success)
   );
 }
