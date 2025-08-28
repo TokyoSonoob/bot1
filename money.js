@@ -21,7 +21,7 @@ module.exports = function (client) {
         .setTitle("⭐ สามารถโอนได้เลยน้าา")
         .setDescription("ช่องทางการชำระเงิน")
         .setColor(0x9b59b6)
-        .setImage("https://drive.google.com/uc?export=download&id=1zMm8-mNzBVI72oARLoQ13Ot8Oz44vRzW")
+        .setImage("https://cdn.discordapp.com/attachments/1400551163321122836/1410710264336351274/11_20250827232117-1.png?ex=68b201d0&is=68b0b050&hm=3b4bc3f9f6f0fe46f055792ca6b36d33e4607d6760e241e48bd968435b7d1b64&")
         .setFooter({ text: "Make by Purple Shop" });
 
       await message.channel.send({ embeds: [embed] });
