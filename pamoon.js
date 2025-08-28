@@ -246,7 +246,7 @@ module.exports = function (client) {
 
     // ===== ตั้ง CRON ปิดประมูล: อังคาร/พฤหัส/เสาร์ 20:00 (เวลาไทย) =====
     const jobClose = schedule.scheduleJob(
-      { rule: "0 20 * * 2,4,6", tz: "Asia/Bangkok" },
+      { rule: "0 19 * * 2,3,4,5,6", tz: "Asia/Bangkok" },
       async () => {
         try {
           const nowTH = new Date().toLocaleString("th-TH", { timeZone: "Asia/Bangkok" });
@@ -260,7 +260,7 @@ module.exports = function (client) {
 
     // ===== ตั้ง CRON เปิดประมูล: จันทร์/พุธ/ศุกร์ 19:00 (เวลาไทย) → ส่งข้อมูลไป 5 ห้อง =====
     const jobOpen = schedule.scheduleJob(
-      { rule: "0 19 * * 1,3,5", tz: "Asia/Bangkok" },
+      { rule: "1 19 * * 1,2,3,4,5", tz: "Asia/Bangkok" },
       async () => {
         try {
           const guild = client.guilds.cache.first();
