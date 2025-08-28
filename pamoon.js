@@ -578,7 +578,7 @@ module.exports = function (client) {
 
     if (parts.length !== 2 || isNaN(parseFloat(parts[1]))) {
       try {
-        const warnMsg = await channel.send("❗เขียนในรูปแบบ **sea 100**");
+        const warnMsg = await channel.send('❗เขียนในรูปแบบ **"ชื่อ ราคา" เช่น "sea 100"**');
         setTimeout(async () => {
           await warnMsg.delete().catch(() => {});
         }, 3000);
