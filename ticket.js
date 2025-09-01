@@ -262,7 +262,7 @@ module.exports = function (client) {
 
       const embed = new EmbedBuilder()
         .setTitle("สั่งงานแอดออนสกิน")
-        .setDescription("**แอดออนสกินดูเรทราคาได้ที่ <#1406520839880445962>\nรวมแอดออนสกิน สกินละ10บาทสนใจกดตั๋วเลย**")
+        .setDescription("**แอดออนสกินดูเรทราคาได้ที่ <#1406520839880445962>\nรวมแอดออนสกิน สกินละ10บาทสนใจกดตั๋วเลย\nจ่ายเงินครบก่อนถึงจะเริ่มงานนะคับ\nงานจะเสร็จภายใน 1-3 วันน้าาา**")
         .setColor(0x9b59b6)
         .setImage("https://giffiles.alphacoders.com/220/220120.gif")
         .setFooter({ text: "Make by Purple Shop" });
