@@ -34,7 +34,6 @@ module.exports = function (client) {
       console.error("❌ ไม่พบ guild ใน client");
       return;
     }
-
     const snapshot = await bidsRef.get();
     for (const doc of snapshot.docs) {
       const channelId = doc.id;
@@ -46,30 +45,49 @@ module.exports = function (client) {
     }
   }
 
-  // 🆕 helper: ล็อกและซ่อนห้องประมูลหลังประกาศผู้ชนะ
-  async function lockAndHideChannel(channel, guild) {
+  // 🆕 helper: ล็อกให้ "อ่านอย่างเดียว" (ทุกคนเห็นได้แต่พิมพ์ไม่ได้) + รีเนมเป็น ❌ ปิดการประมูล
+  async function lockChannelReadOnly(channel, guild) {
     try {
-      // ปิดการเข้าถึงของ @everyone
+      // ทุกคน: มองเห็น/อ่านประวัติได้ แต่ห้ามส่งข้อความ/สร้างเธรด/แนบไฟล์/ลิงก์/อีโมจิภายนอก
       await channel.permissionOverwrites.edit(guild.roles.everyone, {
-        ViewChannel: false,
+        ViewChannel: true,
+        ReadMessageHistory: true,
         SendMessages: false,
-        ReadMessageHistory: false,
+        AddReactions: false,
+        SendMessagesInThreads: false,
+        CreatePublicThreads: false,
+        CreatePrivateThreads: false,
+        SendTTSMessages: false,
+        AttachFiles: false,
+        EmbedLinks: false,
+        UseExternalEmojis: false,
+        UseExternalStickers: false,
       });
-      // คงสิทธิ์ให้บอทเผื่อแก้ไข/ส่งข้อความได้
+
+      // บอท: คงสิทธิ์เพื่อประกาศเพิ่มเติม/แก้ไขห้องได้
       await channel.permissionOverwrites.edit(client.user.id, {
         ViewChannel: true,
-        SendMessages: true,
         ReadMessageHistory: true,
+        SendMessages: true,
         ManageChannels: true,
+        EmbedLinks: true,
+        AttachFiles: true,
       });
+
+      // เปลี่ยนชื่อห้อง
+      if (channel.name !== "❌ ปิดการประมูล") {
+        await channel.setName("❌ ปิดการประมูล").catch(() => {});
+      }
+
       // เคลียร์ timeout ของห้องนี้ถ้ามี
       if (bidTimeouts.has(channel.id)) {
         clearTimeout(bidTimeouts.get(channel.id));
         bidTimeouts.delete(channel.id);
       }
-      console.log(`🔒 ล็อกและซ่อนห้องเรียบร้อย: ${channel.name}`);
+
+      console.log(`🔒 ล็อกอ่านอย่างเดียว + รีเนม: ${channel.name}`);
     } catch (e) {
-      console.error("❌ ล็อก/ซ่อนห้องล้มเหลว:", e);
+      console.error("❌ ล็อกอ่านอย่างเดียว/รีเนมล้มเหลว:", e);
     }
   }
 
@@ -239,8 +257,8 @@ module.exports = function (client) {
         await bidsRef.doc(bidChannelId).delete().catch(() => {});
         console.log(`🗑️ ลบข้อมูล bids ของห้อง ${bidChannel.name} เรียบร้อย`);
 
-        // 🆕 ล็อกและซ่อนห้องประมูลหลังประกาศผล
-        await lockAndHideChannel(bidChannel, guild);
+        // 🆕 เปลี่ยนเป็น "อ่านอย่างเดียว" + รีเนม
+        await lockChannelReadOnly(bidChannel, guild);
       }
     };
 
@@ -489,8 +507,8 @@ module.exports = function (client) {
         await db.collection("bids").doc(bidChannelId).delete().catch(() => {});
         console.warn("⚠️ ไม่มีผู้ชนะที่ยังอยู่:", bidChannelId);
 
-        // 🆕 ล็อกและซ่อนห้องแม้ไม่มีผู้ชนะ
-        await lockAndHideChannel(bidChannel, message.guild);
+        // 🆕 เปลี่ยนเป็น "อ่านอย่างเดียว" + รีเนม
+        await lockChannelReadOnly(bidChannel, message.guild);
         return;
       }
 
@@ -529,9 +547,8 @@ module.exports = function (client) {
           );
         }
 
-        // 🆕 ล็อกและซ่อนห้องหลังประกาศผู้ชนะ
-        await lockAndHideChannel(bidChannel, message.guild);
-
+        // 🆕 เปลี่ยนเป็น "อ่านอย่างเดียว" + รีเนม
+        await lockChannelReadOnly(bidChannel, message.guild);
       } catch (err) {
         console.error("❌ เกิดข้อผิดพลาด:", err);
         await message.channel
