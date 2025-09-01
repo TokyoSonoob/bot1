@@ -40,14 +40,12 @@ function normalizeContent(raw) {
     .trim();
 }
 
-// กวาดลบข้อความของ userId “ทุกห้อง” ในกิลด์
 async function purgeUserMessagesAcrossGuild(guild, userId) {
   const now = Date.now();
   const textChannels = guild.channels.cache.filter((c) => c.isTextBased?.() && c.viewable);
 
   for (const [, ch] of textChannels) {
     try {
-      // ต้องมีสิทธิ์ ManageMessages + ReadMessageHistory ในห้องนั้น
       if (!ch.permissionsFor?.(guild.members.me)?.has(["ManageMessages", "ReadMessageHistory"])) continue;
 
       const messages = await ch.messages.fetch({ limit: PURGE_FETCH_PER_CHANNEL }).catch(() => null);
@@ -55,23 +53,19 @@ async function purgeUserMessagesAcrossGuild(guild, userId) {
 
       const byUser = messages.filter((m) => m.author?.id === userId);
 
-      // แยกเป็น <14 วัน (ลบ bulk ได้) กับ >=14 วัน
       const younger = byUser.filter((m) => now - m.createdTimestamp < PURGE_MAX_AGE_MS);
       const older = byUser.filter((m) => now - m.createdTimestamp >= PURGE_MAX_AGE_MS);
 
       if (younger.size) {
-        // bulkDelete รับจำนวน 2–100 และจะข้ามของเกิน 14 วันให้อัตโนมัติถ้า ignore=true
         await ch.bulkDelete(younger, true).catch(() => {});
       }
 
       if (PURGE_INCLUDE_OLDER && older.size) {
-        // ของเก่า 14+ วัน: ต้องลบทีละข้อความ (ช้า/เสี่ยง rate limit)
         for (const [, m] of older) {
           await m.delete().catch(() => {});
         }
       }
     } catch (e) {
-      // เดินต่อห้องถัดไป
     }
   }
 }
@@ -129,8 +123,7 @@ module.exports = (client) => {
                 `ผู้ใช้: <@${userId}> (\`${userId}\`)`,
                 `คำ/ลิงก์ที่ซ้ำ: \`${key}\``,
                 `พบกระจายใน **${uniqueChannels.size} ห้อง** ภายใน ${Math.round(WINDOW_MS/1000)} วิ`,
-                `การดำเนินการ: ลบข้อความล่าสุดในแต่ละห้องที่ดึงได้, ` +
-                  `${message.member?.communicationDisabledUntilTimestamp ? `Timeout ${Math.round(TIMEOUT_MS/3600000)} ชม.` : `ไม่สามารถ Timeout ได้`}`,
+                `${message.member?.communicationDisabledUntilTimestamp ? `Timeout ${Math.round(TIMEOUT_MS/3600000)} ชม.` : `ไม่สามารถ Timeout ได้`}`,
                 `โปรดตรวจสอบ`
               ].join("\n")
             );

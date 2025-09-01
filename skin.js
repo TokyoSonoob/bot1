@@ -20,7 +20,7 @@ module.exports = function (client) {
   const OWNER_IDS = {
     skin_hi: "1134464935448023152",
     skin_sky: "1260765032413659159",
-    skin_muy: "1010202066720936048", // เปลี่ยนจาก skin_mui -> skin_muy
+    skin_muy: "1010202066720936048",
     skin_kim: "1294133075801931870",
     skin_nj: "1092393537238204497",
   };
@@ -28,18 +28,16 @@ module.exports = function (client) {
   const LABELS = {
     skin_hi: "ลายเส้นฮิเคริ",
     skin_sky: "ลายเส้นสกาย",
-    skin_muy: "ลายเส้นมุย", // เปลี่ยนคีย์
+    skin_muy: "ลายเส้นมุย",
     skin_kim: "ลายเส้นขิม",
     skin_nj: "ลายเส้น NJ",
   };
-
-  // แปลง arg -> customId ของปุ่ม (รับเฉพาะ muy แทน mui)
   const argToCustomId = (raw) => {
     if (!raw) return null;
     const key = String(raw).toLowerCase();
     if (key === "hi") return "skin_hi";
     if (key === "sky") return "skin_sky";
-    if (key === "muy") return "skin_muy"; // ใช้ muy เท่านั้น
+    if (key === "muy") return "skin_muy";
     if (key === "kim") return "skin_kim";
     if (key === "nj") return "skin_nj";
     return null;
@@ -84,8 +82,6 @@ module.exports = function (client) {
       await message.channel.send({ embeds: [embed], components: [row] });
       await message.delete().catch(() => {});
     }
-
-    // ปิดปุ่มด้วยชื่อย่อ: !closeskin <hi|sky|muy|kim|nj>
     if (command === "closeskin") {
       if (!isAdminOrStaff(message.member)) {
         await message.delete().catch(() => {});
