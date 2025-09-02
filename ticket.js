@@ -28,6 +28,9 @@ const dynamicState   = new Map();  // key -> { bangsQty:null|number, bangsBringO
 const bangsPromptMsg = new Map();  // key -> Message (ปอยผม)
 const buffPromptMsg  = new Map();  // key -> Message (เอฟเฟก/บัฟ)
 
+// ✅ แฟลกสำหรับ “เตือนครั้งเดียวหลังเลือกออฟชั่น”
+const postSelectNudge = new Map(); // key: `${userId}-${channelId}` -> boolean
+
 const PAY_CHANNEL_ID = "1371395778727383040";
 const ADDON_BASE_PRICE = 30; // เฉพาะโหมด standard
 
@@ -84,6 +87,7 @@ function initState(userId, channelId, mode) {
   dynamicState.set(k, { bangsQty: null, bangsBringOwn: false, buffQty: null, buffNotes: "" });
   bangsPromptMsg.delete(k);
   buffPromptMsg.delete(k);
+  postSelectNudge.delete(k);
   return k;
 }
 function setSubtotal(k, val) {
@@ -117,26 +121,22 @@ function computeTotal(k) {
   // ⬇️ โหมด standard: คำนวณจาก selections + ปอยผม/บัฟ แล้วบวก base
   let subtotal = 0;
 
-  // ออปชันปกติ (ไม่รวม bangs/buff)
   for (const v of selections) {
     if (v === "bangs" || v === "buff") continue;
     subtotal += prices[v] || 0;
   }
 
-  // ปอยผม
   if (selections.has("bangs")) {
     if (dyn.bangsBringOwn) subtotal += BRING_OWN_FLAT;
     else if (Number.isFinite(dyn.bangsQty)) subtotal += dyn.bangsQty * PER_PIECE;
   }
 
-  // บัฟ
   if (selections.has("buff")) {
     if (Number.isFinite(dyn.buffQty)) subtotal += dyn.buffQty * BUFF_PER;
   }
 
   return subtotal + ADDON_BASE_PRICE;
 }
-
 
 async function postOrReplaceSummary(interaction) {
   const k = keyOf(interaction.user.id, interaction.channel.id);
@@ -148,12 +148,10 @@ async function postOrReplaceSummary(interaction) {
   const lines = [];
   lines.push("# รวมราคาแอดออน");
 
-  // ✅ แสดงรายการจาก userDetails เสมอ (ครอบคลุมทั้ง standard/bundle/preset)
   if (details.length) {
     lines.push(...details);
   }
 
-  // ⬇️ เฉพาะ standard: ต่อท้ายบรรทัดพิเศษปอยผม/บัฟ (เพราะไม่ได้อยู่ใน details)
   if (selections.has("bangs")) {
     if (dyn.bangsBringOwn) {
       lines.push(`**• ${labels.bangs} : นำมาเอง ${BRING_OWN_FLAT} บาท**`);
@@ -173,8 +171,6 @@ async function postOrReplaceSummary(interaction) {
     }
   }
 
-  // base ของ standard ถูกบวกใน computeTotal แล้ว ไม่ต้องพิมพ์ซ้ำตรงนี้ก็ได้
-  // ถ้าต้องการแสดงบรรทัด base ก็ปล่อยบรรทัดนี้ไว้:
   if (mode === "standard") lines.push(`**• ค่าแอดออน: ${ADDON_BASE_PRICE} บาท**`);
 
   const total = computeTotal(k);
@@ -194,10 +190,7 @@ async function postOrReplaceSummary(interaction) {
   summaryMessages.set(k, msg);
 }
 
-
 // ===== Embeds ถามเฉพาะทาง (ไม่มีการแสดงราคาใน embed) =====
-
-// ปอยผม — ปุ่ม: กรอกจำนวน / นำมาเอง (ตัด "ยกเลิก" ออก)
 async function sendBangsPrompt(interaction) {
   const k = keyOf(interaction.user.id, interaction.channel.id);
   const old = bangsPromptMsg.get(k);
@@ -221,7 +214,6 @@ async function deleteBangsPrompt(k) {
   bangsPromptMsg.delete(k);
 }
 
-// บัฟ — ปุ่ม: กรอกจำนวน (ตัด "ยกเลิก" ออก)
 async function sendBuffPrompt(interaction) {
   const k = keyOf(interaction.user.id, interaction.channel.id);
   const old = buffPromptMsg.get(k);
@@ -252,6 +244,7 @@ module.exports = function (client) {
       if (!message.guild || message.author.bot) return;
       if (!message.content.startsWith("!ticket")) return;
 
+    // ⬇️ หมายเหตุ: บล็อกนี้ใช้เฉพาะสั่งตั้งค่าหมวดหมู่ด้วย !ticket
       const args = message.content.trim().split(/\s+/);
       const categoryId = args[1];
       if (!categoryId) {
@@ -277,6 +270,21 @@ module.exports = function (client) {
       await message.reply(`✅ ตั้งค่าหมวดหมู่เรียบร้อยแล้ว: \`${categoryId}\``);
     } catch (err) {
       console.error("!ticket error:", err);
+    }
+  });
+
+  // ✅ เตือนครั้งแรกที่ผู้ใช้พิมพ์หลังเลือกออฟชั่น (เฉพาะยังไม่เคยส่งฟอร์ม)
+  client.on("messageCreate", async (message) => {
+    try {
+      if (!message.guild || message.author.bot) return;
+
+      const k = keyOf(message.author.id, message.channel.id);
+      if (postSelectNudge.get(k)) {
+        await message.reply("# กรอกข้อมูลเพิ่มเติมด้วยน้าาาา");
+        postSelectNudge.set(k, false); // เตือนครั้งเดียว
+      }
+    } catch (err) {
+      console.error("postSelectNudge messageCreate error:", err);
     }
   });
 
@@ -434,6 +442,7 @@ module.exports = function (client) {
           ticketModes.delete(k);
           userSelections.delete(k);
           dynamicState.delete(k);
+          postSelectNudge.delete(k);
 
           if (!interaction.deferred && !interaction.replied) {
             await interaction.deferReply({ ephemeral: true });
@@ -453,6 +462,12 @@ module.exports = function (client) {
           dynamicState.set(k, { bangsQty: null, bangsBringOwn: false, buffQty: null, buffNotes: "" });
           await deleteBangsPrompt(k);
           await deleteBuffPrompt(k);
+
+          // ✅ เตือนครั้งถัดไปเฉพาะยังไม่เคยกรอกฟอร์ม
+          if (!formMessages.has(k)) {
+            postSelectNudge.set(k, true);
+          }
+
           await postOrReplaceSummary(interaction);
           return;
         }
@@ -481,7 +496,6 @@ module.exports = function (client) {
           dyn.bangsBringOwn = true;
           dyn.bangsQty = null;
           await deleteBangsPrompt(k);
-          // ถ้ามี buff ที่ยังไม่ตั้งค่า → ไปถามบัฟต่อ แทนที่จะสรุปเลย
           const set = userSelections.get(k) || new Set();
           const needBuff = set.has("buff") && !Number.isFinite(ensureDyn(k).buffQty);
           if (needBuff) {
@@ -565,6 +579,11 @@ module.exports = function (client) {
           setDetails(k, detailLines);
           setSubtotal(k, subtotal);
 
+          // ✅ เปิดแฟลกเตือนครั้งเดียว เฉพาะยังไม่เคยส่งฟอร์ม
+          if (!formMessages.has(k)) {
+            postSelectNudge.set(k, true);
+          }
+
           // ลอจิกลำดับ: ถ้าเลือกพร้อมกัน ให้ "ปอยผม" ก่อนเสมอ
           if (set.has("bangs")) {
             await sendBangsPrompt(interaction);
@@ -573,7 +592,6 @@ module.exports = function (client) {
             await sendBuffPrompt(interaction);
             return; // ยังไม่สรุป
           } else {
-            // ไม่มีทั้งสอง → สรุปได้เลย
             await postOrReplaceSummary(interaction);
             return;
           }
@@ -652,6 +670,10 @@ module.exports = function (client) {
             content: `<@${interaction.user.id}>\n\n## ชื่อ Xbox : ${xboxName}\n## ล็อกให้ใช้ได้คนเดียวไหม : ${lockOption}\n## ช่องที่ใส่ : ${slot}`,
           });
           formMessages.set(k, newMsg);
+
+          // ✅ ผู้ใช้กรอกฟอร์มแล้ว: ปิดแฟลก ไม่เตือนอีก
+          postSelectNudge.set(k, false);
+
           await interaction.deferUpdate();
           return;
         }
@@ -671,7 +693,6 @@ module.exports = function (client) {
           await interaction.deferUpdate();
           await deleteBangsPrompt(k);
 
-          // ถ้ามี buff ที่ยังไม่ตั้งค่า → ไปถามบัฟต่อ (ตามลำดับ)
           const set = userSelections.get(k) || new Set();
           const needBuff = set.has("buff") && !Number.isFinite(ensureDyn(k).buffQty);
           if (needBuff) {
@@ -700,7 +721,6 @@ module.exports = function (client) {
           await interaction.deferUpdate();
           await deleteBuffPrompt(k);
 
-          // หลังบัฟเสร็จ: สรุปได้เลย (เพราะบังคับปอยผมเสร็จก่อนอยู่แล้วถ้ามี)
           await postOrReplaceSummary(interaction);
           return;
         }
