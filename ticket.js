@@ -31,7 +31,10 @@ const buffPromptMsg  = new Map();  // key -> Message (เอฟเฟก/บั�
 // ✅ แฟลกสำหรับ “เตือนครั้งเดียวหลังเลือกออฟชั่น”
 const postSelectNudge = new Map(); // key: `${userId}-${channelId}` -> boolean
 
-const PAY_CHANNEL_ID = "1371395778727383040";
+// === ช่อง/รูปจ่ายเงิน ===
+const PAY_CHANNEL_ID = "1371395778727383040"; // (คงไว้ได้ ใช้ที่อื่นได้ในอนาคต)
+const PAY_IMAGE_URL  = "https://drive.google.com/uc?export=download&id=1DDmlbAXdnKIvnDW5vz-JJpT8a4Bw9BNV";
+
 const ADDON_BASE_PRICE = 30; // เฉพาะโหมด standard
 
 const labels = {
@@ -138,6 +141,7 @@ function computeTotal(k) {
   return subtotal + ADDON_BASE_PRICE;
 }
 
+// === ปรับฟังก์ชันสรุป: แสดง "โอนเงินได้ที่" + แนบรูปจ่ายเงิน ===
 async function postOrReplaceSummary(interaction) {
   const k = keyOf(interaction.user.id, interaction.channel.id);
   const mode = ticketModes.get(k) || "standard";
@@ -175,7 +179,7 @@ async function postOrReplaceSummary(interaction) {
 
   const total = computeTotal(k);
   lines.push(`\n**รวมราคา: ${total} บาท**`);
-  lines.push(`## โอนเงินได้ที่\n# <#${PAY_CHANNEL_ID}>`);
+  lines.push(`## โอนเงินได้ที่`); // ← เปลี่ยนจากการแท็กช่อง เป็นหัวข้อก่อนแสดงรูป
 
   const old = summaryMessages.get(k);
   if (old && old.deletable) {
@@ -183,8 +187,11 @@ async function postOrReplaceSummary(interaction) {
   }
 
   const components = mode === "standard" ? [createFormButton()] : [];
+  const payEmbed = new EmbedBuilder().setImage(PAY_IMAGE_URL);
+
   const msg = await interaction.channel.send({
     content: `<@${interaction.user.id}>\n` + lines.join("\n"),
+    embeds: [payEmbed],
     components,
   });
   summaryMessages.set(k, msg);
@@ -244,7 +251,7 @@ module.exports = function (client) {
       if (!message.guild || message.author.bot) return;
       if (!message.content.startsWith("!ticket")) return;
 
-    // ⬇️ หมายเหตุ: บล็อกนี้ใช้เฉพาะสั่งตั้งค่าหมวดหมู่ด้วย !ticket
+      // ⬇️ หมายเหตุ: บล็อกนี้ใช้เฉพาะสั่งตั้งค่าหมวดหมู่ด้วย !ticket
       const args = message.content.trim().split(/\s+/);
       const categoryId = args[1];
       if (!categoryId) {
