@@ -667,7 +667,7 @@ module.exports = function (client) {
             await oldMsg.delete().catch(() => {});
           }
           const newMsg = await interaction.channel.send({
-            content: `<@${interaction.user.id}>\n\n## ชื่อ Xbox : ${xboxName}\n## ล็อกให้ใช้ได้คนเดียวไหม : ${lockOption}\n## ช่องที่ใส่ : ${slot}`,
+            content: `<@${interaction.user.id}>\n\n## ชื่อ Xbox : \`${xboxName}\`\n## ล็อกให้ใช้ได้คนเดียวไหม : ${lockOption}\n## ช่องที่ใส่ : ${slot}`,
           });
           formMessages.set(k, newMsg);
 
