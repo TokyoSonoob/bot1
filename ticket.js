@@ -179,7 +179,7 @@ async function postOrReplaceSummary(interaction) {
 
   const total = computeTotal(k);
   lines.push(`\n**รวมราคา: ${total} บาท**`);
-  lines.push(`## โอนเงินได้ที่`); // ← เปลี่ยนจากการแท็กช่อง เป็นหัวข้อก่อนแสดงรูป
+  lines.push(`## โอนเงินได้ที่`);
 
   const old = summaryMessages.get(k);
   if (old && old.deletable) {
@@ -187,7 +187,7 @@ async function postOrReplaceSummary(interaction) {
   }
 
   const components = mode === "standard" ? [createFormButton()] : [];
-  const payEmbed = new EmbedBuilder().setImage(PAY_IMAGE_URL);
+  const payEmbed = new EmbedBuilder().setImage(PAY_IMAGE_URL).setColor(0x9b59b6);
 
   const msg = await interaction.channel.send({
     content: `<@${interaction.user.id}>\n` + lines.join("\n"),
