@@ -191,6 +191,49 @@ module.exports = function (client) {
     console.log(`✅ เปิดห้อง ${channelName} และเซฟ publicChannelId แล้ว`);
   }
 
+  // ===== 🧹 ลบห้องที่ปิดประมูลทุกวัน 12:00 (Asia/Bangkok) =====
+  function isClosedAuctionChannelName(name) {
+    // รองรับทั้งแบบมีขีดและมีเว้นวรรค
+    const targets = new Set(["❌-ปิดการประมูล", "❌ ปิดการประมูล"]);
+    return targets.has(String(name || ""));
+  }
+
+  async function deleteClosedAuctionChannels() {
+    try {
+      // รองรับหลายกิลด์ (ถ้ามี) — ลบให้ครบทุกกิลด์ที่บอทอยู่
+      const guilds = [...client.guilds.cache.values()];
+      if (!guilds.length) {
+        console.warn("⚠️ ไม่มี guild ใน client");
+        return;
+      }
+
+      for (const guild of guilds) {
+        const candidates = guild.channels.cache.filter(
+          (ch) => (ch.type === 0 || ch.type === 5) && isClosedAuctionChannelName(ch.name)
+        );
+
+        if (!candidates.size) {
+          console.log(`ℹ️ [${guild.name}] ไม่มีห้องชื่อ ❌-ปิดการประมูล ให้ลบ`);
+          continue;
+        }
+
+        console.log(`🧹 [${guild.name}] พบห้องที่จะลบ ${candidates.size} ห้อง`);
+        for (const ch of candidates.values()) {
+          try {
+            await ch.delete("Daily cleanup: closed auction room");
+            // กัน rate limit เบาๆ
+            await new Promise((r) => setTimeout(r, 700));
+          } catch (e) {
+            console.error(`❌ ลบห้องไม่สำเร็จ (${ch.id} ${ch.name}) :`, e.message || e);
+          }
+        }
+        console.log(`✅ [${guild.name}] ลบห้องปิดการประมูลเสร็จสิ้น`);
+      }
+    } catch (err) {
+      console.error("❌ deleteClosedAuctionChannels error:", err);
+    }
+  }
+
   client.once("ready", async () => {
     await cleanOrphanBids();
 
@@ -264,7 +307,7 @@ module.exports = function (client) {
 
     // ===== ตั้ง CRON ปิดประมูล: อังคาร/พฤหัส/เสาร์ 20:00 (เวลาไทย) =====
     const jobClose = schedule.scheduleJob(
-      { rule: "59 18 * * 2,3,4,5,6", tz: "Asia/Bangkok" },
+      { rule: "59 18 * * 1,2,3,4,5,6,7", tz: "Asia/Bangkok" },
       async () => {
         try {
           const nowTH = new Date().toLocaleString("th-TH", { timeZone: "Asia/Bangkok" });
@@ -276,9 +319,8 @@ module.exports = function (client) {
       }
     );
 
-    // ===== ตั้ง CRON เปิดประมูล: จันทร์/พุธ/ศุกร์ 19:00 (เวลาไทย) → ส่งข้อมูลไป 5 ห้อง =====
     const jobOpen = schedule.scheduleJob(
-      { rule: "0 19 * * 1,2,3,4,5", tz: "Asia/Bangkok" },
+      { rule: "0 19 * * 1,2,3,4,5,6,7", tz: "Asia/Bangkok" },
       async () => {
         try {
           const guild = client.guilds.cache.first();
@@ -343,6 +385,16 @@ module.exports = function (client) {
       }
     );
 
+    // 🕛 ตั้ง CRON ลบห้องปิดประมูล 12:00 ทุกวัน
+    const jobDailyCleanup = schedule.scheduleJob(
+      { rule: "0 12 * * *", tz: "Asia/Bangkok" },
+      async () => {
+        const nowTH = new Date().toLocaleString("th-TH", { timeZone: "Asia/Bangkok" });
+        console.log(`🕛 RUN daily closed-channel cleanup @TH ${nowTH}`);
+        await deleteClosedAuctionChannels();
+      }
+    );
+
     // log นัดครั้งถัดไป
     const nextClose = jobClose.nextInvocation?.();
     if (nextClose) {
@@ -358,6 +410,14 @@ module.exports = function (client) {
       console.log(
         "⏭️ [open] next run (Asia/Bangkok):",
         nextOpen.toLocaleString("th-TH", { timeZone: "Asia/Bangkok" })
+      );
+    }
+    const nextCleanup = jobDailyCleanup.nextInvocation?.();
+    if (nextCleanup) {
+      console.log("⏭️ [cleanup] next run (server):", nextCleanup.toString());
+      console.log(
+        "⏭️ [cleanup] next run (Asia/Bangkok):",
+        nextCleanup.toLocaleString("th-TH", { timeZone: "Asia/Bangkok" })
       );
     }
   });
@@ -612,7 +672,7 @@ module.exports = function (client) {
     }
 
     const name = parts[0];
-    const price = parseFloat(parts[1]);
+       const price = parseFloat(parts[1]);
 
     const docRef = bidsRef.doc(channel.id);
     const docSnap = await docRef.get();
