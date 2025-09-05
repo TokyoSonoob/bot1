@@ -53,6 +53,7 @@ require("./everyone")(client);
 require("./tk")(client);
 require("./dis")(client);
 require("./x")(client);
+require("./ban")(client);
 
 // ===== STATE =====
 const imageCollectorState = new Map();
