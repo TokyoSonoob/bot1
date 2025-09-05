@@ -83,7 +83,7 @@ module.exports = function (client) {
           "                         **꒰ สั่งงานดิส ꒱**",
           "",
           "- ชื่อเซิฟเวอร์ :",
-          "- ดิสร้าน / ดิสส่วนตัว :",
+          "- สร้างดิส /ทำบอท :",
           "- ธีม :",
           "- ชื่อยศต่างๆ (สมาชิก แอดมิน เจ้าของเซิฟเวอร์ ฯลฯ) :",
           "- บอทในเซิฟเวอร์ :",
@@ -109,21 +109,21 @@ module.exports = function (client) {
         new ActionRowBuilder().addComponents(
           new TextInputBuilder()
             .setCustomId(FIELD_NAME)
-            .setLabel("ชื่อดิส")
+            .setLabel("ชื่อเซิฟเวอร์")
             .setStyle(TextInputStyle.Short)
             .setRequired(true)
         ),
         new ActionRowBuilder().addComponents(
           new TextInputBuilder()
             .setCustomId(FIELD_THEME)
-            .setLabel("ธีม")
+            .setLabel("สร้างดิส/ทำบอท")
             .setStyle(TextInputStyle.Paragraph)
             .setRequired(true)
         ),
         new ActionRowBuilder().addComponents(
           new TextInputBuilder()
             .setCustomId(FIELD_BOTS)
-            .setLabel("บอทที่อยากให้เพิ่ม")
+            .setLabel("ธีม")
             .setStyle(TextInputStyle.Paragraph)
             .setRequired(false)
         ),
@@ -137,7 +137,7 @@ module.exports = function (client) {
         new ActionRowBuilder().addComponents(
           new TextInputBuilder()
             .setCustomId(FIELD_ROOMS)
-            .setLabel("เพิ่มห้อง (พิมพ์ข้อความ)")
+            .setLabel("บอทในเซิฟเวอร์")
             .setStyle(TextInputStyle.Paragraph)
             .setRequired(false)
         )
@@ -254,7 +254,7 @@ module.exports = function (client) {
           .setColor(0x7f46c6)
           .setTitle("สรุปรายละเอียดการสั่งดิสคอร์ส")
           .setDescription(
-            `**ชื่อดิส:** ${name}\n**ธีม:** ${theme}\n**บอท:** ${bots || "-"}\n**ยศ:** ${role}\n**เพิ่มห้อง:** ${rooms || "-"}`
+            `**ชื่อเซิฟเวอร์:** ${name}\n**สร้างดิสหรือทำบอท:** ${theme}\n**ธีม:** ${bots || "-"}\n**ชื่อยศที่ต้องการ:** ${role}\n**บอทในเซิฟเวอร์:** ${rooms || "-"}`
           )
           .setFooter({ text: "Make by Purple Shop" })
           .setTimestamp();
