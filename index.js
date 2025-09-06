@@ -50,7 +50,6 @@ require("./com")(client);
 require("./pitekorn")(client);
 require("./clearchat")(client);
 require("./everyone")(client);
-require("./tk")(client);
 require("./dis")(client);
 require("./x")(client);
 require("./ban")(client);
