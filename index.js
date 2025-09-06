@@ -420,7 +420,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           .setDescription("กรุณากรอกข้อมูลให้ครบถ้วนตามที่ระบบกำหนด")
           .setColor(0x9b59b6);
 
-        // ✅ เพิ่มปุ่ม "แจ้งแอดมินปิดห้อง"
+        // ✅ ปุ่มหลักในห้องรับรอง (รวมปุ่มแจ้งแอดมิน)
         const adminRow = new ActionRowBuilder().addComponents(
           new ButtonBuilder().setCustomId("close_channel").setLabel("ปิดห้อง").setStyle(ButtonStyle.Danger),
           new ButtonBuilder().setCustomId("fill_info").setLabel("กรอกข้อมูล").setStyle(ButtonStyle.Secondary),
@@ -484,8 +484,21 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return interaction.showModal(modal);
     }
 
-    // ===== ส่งข้อมูล → เปิดห้อง public "เฉพาะงานของห้องนี้" =====
+    // ===== ส่งข้อมูล → เปิดห้อง public "เฉพาะงานของห้องนี้" (ADMIN ONLY) =====
     if (interaction.customId === "submit_info") {
+      // ⛔ อนุญาตเฉพาะแอดมิน/ผู้มีสิทธิ์จัดการช่อง
+      const member = await guild.members.fetch(interaction.user.id);
+      const isAdmin =
+        member.permissions.has(PermissionsBitField.Flags.Administrator) ||
+        member.permissions.has(PermissionsBitField.Flags.ManageChannels);
+
+      if (!isAdmin) {
+        return interaction.reply({
+          content: "❌ ปุ่มนี้ใช้ได้เฉพาะแอดมินเท่านั้น",
+          ephemeral: true,
+        });
+      }
+
       await interaction.deferReply({ ephemeral: true });
 
       try {
