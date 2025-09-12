@@ -363,7 +363,7 @@ module.exports = function (client) {
             .sort((a, b) => a.count - b.count)
             .map((x) => x.doc);
 
-          const toOpen = docsSorted.slice(0, 5); // เปิด 5 ห้อง
+          const toOpen = docsSorted.slice(0, 10); // เปิด 5 ห้อง
           if (toOpen.length === 0) {
             console.log("ℹ️ ไม่พบ roomName ตามรูปแบบ 'ครั้งที่-<เลข>'");
             return;
@@ -867,3 +867,4 @@ module.exports = function (client) {
     }
   });
 };
+
