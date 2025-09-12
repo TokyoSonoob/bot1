@@ -662,7 +662,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 ## ยอดที่ตั้งไว้ : ${targetPrice} บาท
 ## สิ่งที่จะได้ : ${prize}
 ## กฎ : ${rules}
-## ปิดเวลา 20:00 น.
+## ปิดเวลา 19:00 น.
 ## วันที่ : รอคิวก่อน
 ## ลงประมูลประมาณวันที่ ${estThai}
 ## ล่าสุดที่ลง : ครั้งที่-${statsNow.latestPostedCount || 0}
