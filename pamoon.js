@@ -17,6 +17,129 @@ const db = admin.firestore();
 const bidsRef = db.collection("bids");
 
 module.exports = function (client) {
+
+  // =========================
+// ⬇⬇ NEW: Helper ดึงราคาบิดล่าสุดของช่อง
+// =========================
+async function getLatestBidPrice(channel, guild) {
+  // 1) ลองอ่านจาก Firestore ก่อน (เร็วและแม่นกว่า)
+  try {
+    const snap = await bidsRef.doc(channel.id).get();
+    if (snap.exists) {
+      const d = snap.data();
+      if (d?.price && isFinite(d.price)) {
+        return Number(d.price);
+      }
+    }
+  } catch (e) {
+    console.warn("getLatestBidPrice: Firestore error:", e?.message || e);
+  }
+
+  // 2) Fallback: สแกนข้อความย้อนหลังเพื่อหาโพสต์ “ชื่อ ราคา”
+  const bidRegex = /^(\S+)\s+(\d+(?:\.\d+)?)$/;
+  let beforeId = null;
+  let latest = null;
+
+  while (true) {
+    const batch = await channel.messages.fetch({
+      limit: 100,
+      ...(beforeId ? { before: beforeId } : {}),
+    }).catch(() => null);
+
+    if (!batch || !batch.size) break;
+    for (const msg of batch.values()) {
+      if (msg.author.bot) continue;
+      const text = msg.content?.trim() ?? "";
+      const m = text.match(bidRegex);
+      if (!m) continue;
+      const price = parseFloat(m[2]);
+      if (!isFinite(price)) continue;
+      latest = { price, at: msg.createdTimestamp };
+      // ไม่ต้องหา “สูงสุด” — เราเอา “ล่าสุด” ตามเวลาข้อความ
+      // (ถ้าต้องการสูงสุด ให้เก็บ Math.max เอาเอง)
+    }
+    beforeId = batch.last().id;
+    // จำกัดรอบสแกน ~300 ข้อความ
+    if (beforeId == null || batch.size < 100) break;
+  }
+
+  return latest?.price ?? null;
+}
+
+function parseBaseRoomName(name) {
+  // รองรับ: "ครั้งที่-12", "ครั้งที่-12-150", "ครั้งที่-12-ล่าสุด-150"
+  const m = String(name || "").match(/^(ครั้งที่-\d+)(?:-(?:ล่าสุด-)?[\d.]+)?$/);
+  return m ? m[1] : null;
+}
+
+
+// ฟอร์แมตราคา: จำนวนเต็มไม่ใส่ทศนิยม, มีทศนิยมคงไว้สูงสุด 2 ตำแหน่ง
+function fmtPrice(p) {
+  if (p == null) return null;
+  const n = Number(p);
+  if (!isFinite(n)) return null;
+  return Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/\.?0+$/,'');
+}
+
+// =========================
+// ⬇⬇ NEW: งานหลัก — เปลี่ยนชื่อห้องให้มีเลขบิดล่าสุด
+// =========================
+async function updateAuctionRoomNamesWithLatestBid() {
+  try {
+    const guild = client.guilds.cache.first();
+    if (!guild) {
+      console.warn("updateAuctionRoomNamesWithLatestBid: no guild");
+      return;
+    }
+
+    // ข้ามห้องที่ถูกปิด (“❌ ปิดการประมูล”)
+    const channels = guild.channels.cache.filter((ch) => {
+      if (!ch || (ch.type !== 0 && ch.type !== 5)) return false; // เฉพาะ text/news
+      if (ch.parentId !== AUCTION_CATEGORY_ID) return false;
+      if (!/ครั้งที่/i.test(ch.name)) return false;
+      if (ch.name.startsWith("❌")) return false;
+      // ต้องจับเฉพาะชื่อที่เป็น “ครั้งที่-<n>” หรือ “ครั้งที่-<n>-<num>”
+      return /^(ครั้งที่-\d+)(?:-(?:ล่าสุด-)?[\d.]+)?$/.test(ch.name);
+    });
+
+    if (!channels.size) {
+      // ไม่มีห้องที่จะอัปเดต
+      return;
+    }
+
+    console.log(`🔄 ตรวจอัปเดตชื่อห้อง (${channels.size} ห้อง) ...`);
+
+    for (const ch of channels.values()) {
+      try {
+        const base = parseBaseRoomName(ch.name);
+        if (!base) continue;
+
+        // ดึงราคาบิดล่าสุดของห้องนี้
+        const latest = await getLatestBidPrice(ch, guild);
+        const priceStr = fmtPrice(latest);
+
+        // ถ้ายังไม่มีราคา (ยังไม่มีบิด) ให้ถอด suffix ออกให้เหลือ "ครั้งที่-<n>" เฉยๆ
+        const desiredName = priceStr ? `${base}-ล่าสุด-${priceStr}` : base;
+
+        if (desiredName !== ch.name) {
+          // ป้องกันยาวเกิน 100 ตัวอักษรของ Discord
+          const finalName = desiredName.slice(0, 100);
+          await ch.setName(finalName).catch(() => {});
+          console.log(`✏️ เปลี่ยนชื่อ: ${ch.name} → ${finalName}`);
+          // กัน rate-limit นิดหน่อย
+          await new Promise((r) => setTimeout(r, 400));
+        }
+      } catch (e) {
+        console.warn(`update name fail (${ch?.id}):`, e?.message || e);
+      }
+    }
+  } catch (e) {
+    console.error("updateAuctionRoomNamesWithLatestBid error:", e);
+  }
+}
+
+
+
   const bidTimeouts = new Map();
 
   const AUCTION_CATEGORY_ID = "1375026841114509332"; // หมวดห้อง public
@@ -235,6 +358,57 @@ module.exports = function (client) {
   }
 
   client.once("ready", async () => {
+    // --- Register /change (guild command) ---
+try {
+  const guild = client.guilds.cache.first();
+  if (!guild) {
+    console.warn("⚠️ ไม่มี guild ให้ลงทะเบียนสแลชคำสั่ง");
+  } else {
+    // ลบคำสั่งชื่อ 'change' เดิม (กันซ้ำ) แล้วค่อยสร้างใหม่
+    const existing = await guild.commands.fetch().catch(() => null);
+    const dup = existing?.find(c => c.name === "change");
+    if (dup) await guild.commands.delete(dup.id).catch(() => {});
+
+    await guild.commands.create({
+      name: "change",
+      description: "ปรับราคา/ผู้ชนะ (ADMIN)",
+      // ไม่มี options — เปิดฟอร์ม (Modal) ทันทีในห้องที่สั่ง
+    });
+
+    console.log(`✅ ลงทะเบียน /change ในกิลด์ ${guild.name} แล้ว`);
+  }
+} catch (e) {
+  console.error("❌ ลงทะเบียน /change ล้มเหลว:", e);
+}
+
+
+
+    // ⬇⬇ NEW: ตั้งงานอัปเดตชื่อห้องทุกๆ 10 นาที (Asia/Bangkok)
+const jobRenameTicker = schedule.scheduleJob(
+  { rule: "*/10 * * * *", tz: "Asia/Bangkok" },
+  async () => {
+    try {
+      const nowTH = new Date().toLocaleString("th-TH", { timeZone: "Asia/Bangkok" });
+      console.log(`🕙 RUN rename-with-bid @TH ${nowTH}`);
+      await updateAuctionRoomNamesWithLatestBid();
+    } catch (e) {
+      console.error("❌ rename ticker error:", e);
+    }
+  }
+);
+
+// เรียกครั้งแรกทันทีหลังบอทพร้อม
+await updateAuctionRoomNamesWithLatestBid();
+
+// (Optional) log นัดครั้งถัดไป
+const nextRename = jobRenameTicker.nextInvocation?.();
+if (nextRename) {
+  console.log("⏭️ [rename] next run (Asia/Bangkok):",
+    nextRename.toLocaleString("th-TH", { timeZone: "Asia/Bangkok" })
+  );
+}
+
+
     await cleanOrphanBids();
 
     // ===== ฟังก์ชันปิดประมูล (ใช้ร่วมทั้ง cron และคำสั่ง) =====
@@ -655,7 +829,7 @@ module.exports = function (client) {
 
     if (parts.length !== 2 || isNaN(parseFloat(parts[1]))) {
       try {
-        const warnMsg = await channel.send('❗เขียนในรูปแบบ **"ชื่อ ราคา" เช่น "sea 100"**');
+        const warnMsg = await channel.send('เขียนรูปแบบ**"ชื่อ ราคา"**');
         setTimeout(async () => {
           await warnMsg.delete().catch(() => {});
         }, 3000);
@@ -709,44 +883,42 @@ module.exports = function (client) {
   });
 
   // ===== ปุ่ม & โมดัลของ !change (ADMIN ONLY) =====
-  client.on(Events.InteractionCreate, async (interaction) => {
-    if (
-      interaction.isButton() &&
-      interaction.customId.startsWith("auction_change_open:")
-    ) {
-      if (
-        !interaction.memberPermissions?.has(
-          PermissionsBitField.Flags.Administrator
-        )
-      ) {
-        await interaction.reply({
-          content: "❌ เฉพาะแอดมินเท่านั้น",
-          ephemeral: true,
-        });
+ // ===== InteractionCreate (Slash, Modal, Buttons) =====
+client.on(Events.InteractionCreate, async (interaction) => {
+  try {
+    // -----------------------------
+    // /change → เปิด Modal (ADMIN)
+    // -----------------------------
+    if (interaction.isChatInputCommand && interaction.isChatInputCommand() && interaction.commandName === "change") {
+      // ✅ เช็คสิทธิ์แอดมิน
+      if (!interaction.memberPermissions?.has(PermissionsBitField.Flags.Administrator)) {
+        await interaction.reply({ content: "❌ เฉพาะแอดมินเท่านั้น", ephemeral: true });
         return;
       }
 
-      const channelId = interaction.customId.split(":")[1];
-
+      // ✅ เช็คว่าอยู่ในห้องประมูลที่ถูกต้อง
       const bidChannel =
-        interaction.guild.channels.cache.get(channelId) ||
-        (await interaction.guild.channels.fetch(channelId).catch(() => null));
+        interaction.channel ??
+        interaction.guild.channels.cache.get(interaction.channelId) ??
+        (await interaction.guild.channels.fetch(interaction.channelId).catch(() => null));
+
       if (!isEligibleAuctionChannel(bidChannel)) {
         await interaction.reply({
-          content: `⚠️ ใช้งานได้เฉพาะห้องที่ชื่อมี "${ROOM_NAME_KEYWORD}" ในหมวดประมูล`,
+          content: `⚠️ ใช้ได้เฉพาะห้องในหมวดประมูล และ **ชื่อห้องต้องมี "${ROOM_NAME_KEYWORD}"**`,
           ephemeral: true,
         });
         return;
       }
 
+      // ✅ เปิดฟอร์ม (hostMsgId เว้นว่าง)
       const modal = new ModalBuilder()
-        .setCustomId(`auction_change_modal:${channelId}:${interaction.message.id}`)
+        .setCustomId(`auction_change_modal:${bidChannel.id}:`)
         .setTitle("ปรับราคา/ผู้ชนะ (ADMIN)");
 
       const userIdInput = new TextInputBuilder()
         .setCustomId("user_id")
         .setLabel("User ID (ตัวเลข)")
-        .setPlaceholder("ใส่ ID ผู้ใช้ที่จะให้เป็นผู้ชนะ")
+        .setPlaceholder("เช่น 123456789012345678")
         .setRequired(true)
         .setStyle(TextInputStyle.Short);
 
@@ -765,25 +937,70 @@ module.exports = function (client) {
       return;
     }
 
-    if (
-      interaction.isModalSubmit() &&
-      interaction.customId.startsWith("auction_change_modal:")
-    ) {
-      if (
-        !interaction.memberPermissions?.has(
-          PermissionsBitField.Flags.Administrator
-        )
-      ) {
+    // ------------------------------------------
+    // ปุ่มปิดห้อง: close_public_<channelId> (ADMIN)
+    // ------------------------------------------
+    if (interaction.isButton && interaction.isButton() && interaction.customId.startsWith("close_public_")) {
+      // ✅ เช็คสิทธิ์แอดมิน
+      if (!interaction.memberPermissions?.has(PermissionsBitField.Flags.Administrator)) {
+        await interaction.reply({ content: "❌ เฉพาะแอดมินเท่านั้น", ephemeral: true });
+        return;
+      }
+
+      const channelId = interaction.customId.replace("close_public_", "");
+      const currentChannel = interaction.channel;
+
+      // ✅ กดได้เฉพาะในห้องเดียวกัน
+      if (!currentChannel || currentChannel.id !== channelId) {
         await interaction.reply({
-          content: "❌ เฉพาะแอดมินเท่านั้น",
+          content: "⚠️ ปุ่มนี้ใช้ได้เฉพาะในห้องที่สร้างปุ่มเท่านั้น",
           ephemeral: true,
         });
         return;
       }
 
-      const [, channelId, hostMsgId] = interaction.customId.split(":");
+      // ปิดการใช้งานปุ่มในข้อความนั้น
+      try {
+        const msg = interaction.message;
+        const newRows = (msg.components || []).map((row) => {
+          const r = ActionRowBuilder.from(row.toJSON());
+          r.components = r.components.map((c) => {
+            const b = ButtonBuilder.from(c.toJSON());
+            return b.setDisabled(true);
+          });
+          return r;
+        });
 
+        await interaction.update({ components: newRows });
+      } catch {
+        // ถ้า update ไม่ได้ (เช่นหมดเวลา) ก็แค่ตอบแยก
+        await interaction.reply({ content: "กำลังปิดห้อง...", ephemeral: true }).catch(() => {});
+      }
+
+      // 🔒 ล็อกอ่านอย่างเดียว + รีเนม (helper มีอยู่แล้วในไฟล์นี้)
+      try {
+        await lockChannelReadOnly(currentChannel, interaction.guild);
+        // แจ้งผล
+        await currentChannel.send("### ห้องนี้ถูกปิดแล้ว โดยผู้ดูแล");
+      } catch (e) {
+        await currentChannel.send("❌ ปิดห้องไม่สำเร็จ").catch(() => {});
+      }
+      return;
+    }
+
+    // --------------------------------------------
+    // Modal submit: auction_change_modal:<cid>:<mid?>
+    // --------------------------------------------
+    if (interaction.isModalSubmit && interaction.isModalSubmit() && interaction.customId.startsWith("auction_change_modal:")) {
+      // ✅ เช็คสิทธิ์แอดมิน
+      if (!interaction.memberPermissions?.has(PermissionsBitField.Flags.Administrator)) {
+        await interaction.reply({ content: "❌ เฉพาะแอดมินเท่านั้น", ephemeral: true });
+        return;
+      }
+
+      const [, channelId, hostMsgId] = interaction.customId.split(":");
       const guild = interaction.guild;
+
       const bidChannel =
         guild.channels.cache.get(channelId) ||
         (await guild.channels.fetch(channelId).catch(() => null));
@@ -796,35 +1013,31 @@ module.exports = function (client) {
         return;
       }
 
+      // รับค่า
       const userId = interaction.fields.getTextInputValue("user_id").trim();
       const amountStr = interaction.fields.getTextInputValue("amount").trim();
       const amount = parseFloat(amountStr);
 
+      // ตรวจรูปแบบ
       if (!/^\d{17,20}$/.test(userId)) {
-        await interaction.reply({
-          content: "⚠️ รูปแบบ **User ID** ไม่ถูกต้อง",
-          ephemeral: true,
-        });
+        await interaction.reply({ content: "⚠️ รูปแบบ **User ID** ไม่ถูกต้อง", ephemeral: true });
         return;
       }
       if (!isFinite(amount) || amount <= 0) {
-        await interaction.reply({
-          content: "⚠️ รูปแบบ **ราคา** ไม่ถูกต้อง",
-          ephemeral: true,
-        });
+        await interaction.reply({ content: "⚠️ รูปแบบ **ราคา** ไม่ถูกต้อง", ephemeral: true });
         return;
       }
 
+      // ต้องมีสมาชิกในกิลด์
       const member = await guild.members.fetch(userId).catch(() => null);
       if (!member) {
-        await interaction.reply({
-          content: "❌ ไม่พบบุคคลนี้ในเซิร์ฟเวอร์",
-          ephemeral: true,
-        });
+        await interaction.reply({ content: "❌ ไม่พบบุคคลนี้ในเซิร์ฟเวอร์", ephemeral: true });
         return;
       }
+
       const displayName = member.displayName || member.user.username || "Unknown";
 
+      // บันทึก bids
       const docRef = bidsRef.doc(channelId);
       await docRef.set(
         {
@@ -837,23 +1050,22 @@ module.exports = function (client) {
         { merge: true }
       );
 
-      await bidChannel.send(
-        `# ราคาล่าสุด (ปรับโดยแอดมิน) คือ ${amount}\n## <@${userId}>`
-      );
+      // แจ้งราคาล่าสุด
+      await bidChannel.send(`# ราคาล่าสุด คือ ${amount}\n## <@${userId}>\n**ปรับโดยแอดมิน**`);
 
+      // ตั้ง timeout แจ้งเตือน “ราคาล่าสุด”
       if (bidTimeouts.has(channelId)) {
         clearTimeout(bidTimeouts.get(channelId));
       }
       const timeout = setTimeout(async () => {
         const latest = (await docRef.get()).data();
         if (latest) {
-          await bidChannel.send(
-            `# ราคาล่าสุดคือ ${latest.price}\n## <@${latest.userId}>`
-          );
+          await bidChannel.send(`# ราคาล่าสุดคือ ${latest.price}\n## <@${latest.userId}>`);
         }
       }, 5 * 60 * 1000);
       bidTimeouts.set(channelId, timeout);
 
+      // ถ้า modal มาจากปุ่ม/ข้อความเดิม ให้ลบข้อความนั้น (กรณีเก่า — เผื่อยังมีหลงเหลือ)
       if (hostMsgId) {
         const hostMsg = await bidChannel.messages.fetch(hostMsgId).catch(() => null);
         if (hostMsg) await hostMsg.delete().catch(() => {});
@@ -865,6 +1077,17 @@ module.exports = function (client) {
       });
       return;
     }
-  });
+
+    // (ถ้ามี interactions ประเภทอื่น เพิ่มต่อได้ที่นี่)
+
+  } catch (err) {
+    console.error("InteractionCreate error:", err);
+    try {
+      if (interaction?.isRepliable?.() && !interaction.replied && !interaction.deferred) {
+        await interaction.reply({ content: "❌ มีข้อผิดพลาดในการทำงานของอินเทอแอคชัน", ephemeral: true });
+      }
+    } catch {}
+  }
+});
 };
 
