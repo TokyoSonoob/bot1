@@ -324,7 +324,7 @@ module.exports = function (client) {
       const channelName =
         mode === "sculpt"
           ? `🔥-𝕄𝕠𝕕𝕖𝕝_${interaction.user.username}`
-          : `🔥-𝕋𝕚𝕔𝕜𝕕𝕥_${interaction.user.username}`;
+          : `🔥-𝕋𝕚𝕔𝕜𝕖𝕥_${interaction.user.username}`;
 
       // 🆕 สร้าง overwrites และเพิ่มสิทธิ์ให้โรลโมเดลในโหมด sculpt
       const overwrites = [
