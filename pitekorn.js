@@ -118,15 +118,7 @@ module.exports = (client) => {
         const prev = await findPrevBid(ch, message.id);
         const prevId = prev?.prevUserId;
         const prevMention = prevId ? `<@${prevId}>` : "อีกคน";
-        const lastMention = `<@${message.author.id}>`;
-
-        // === กฎใหม่: ถ้าเลขล่าสุด <= เลขเก่า -> ลบข้อความล่าสุดแล้วจบ ===
-        const prevAmtNum = prev ? Number(prev.prevAmount) : NaN;
-        const curAmtNum = Number(amount);
-        if (!Number.isNaN(prevAmtNum) && !Number.isNaN(curAmtNum) && curAmtNum <= prevAmtNum) {
-          await message.delete().catch(() => {}); // ต้องมีสิทธิ์ Manage Messages
-          return;
-        }
+        const lastMention = `<@${message.author.id}>`
 
         // ถ้าคนก่อนหน้า == คนล่าสุด -> ใช้ประโยคพิเศษแบบสุ่ม
         if (prevId && prevId === message.author.id) {
