@@ -61,7 +61,7 @@ const restrictedChannels = new Set();
 // ===== CONFIG =====
 const PUBLIC_CATEGORY_ID  = "1375026841114509332"; // หมวดหมู่ public (ห้องเปิดประมูล)
 const PRIVATE_CATEGORY_ID = "1387466735619412030"; // หมวดห้องส่วนตัว (ห้องรับงาน)
-const PER_DAY_CAPACITY    = 5;                     // 1 วันลงได้ 5 งาน
+const PER_DAY_CAPACITY    = 10;
 
 // ✅ ที่เก็บ "ฐานข้อมูลรูป/permaLink" (server/room ปลายทาง)
 const PERMA_GUILD_ID   = "1401622759582466229"; // server (guild) ปลายทาง
@@ -101,12 +101,26 @@ async function getLatestPostedCountFromFirestore() {
   });
   return maxCount;
 }
-function estimateDateByQueueSize(pendingCount, perDay = PER_DAY_CAPACITY) {
-  const offsetDays = Math.floor(pendingCount / perDay) + 1;
-  const est = new Date();
-  est.setDate(est.getDate() + offsetDays);
+// เปิดห้องจริงรอบ 19:00 ของแต่ละวัน → ถ้าจองหลัง 19:00 ให้เลื่อนไปเริ่มนับวันถัดไป
+function estimateDateByQueueSize(pendingCount, perDay = PER_DAY_CAPACITY, opts = {}) {
+  const { cutoffHour = 19 } = opts; // เวลาเปิดประจำวัน (ไทย)
+  const now = new Date();
+
+  // จุดตัดของ "วันนี้" เวลา 19:00
+  const cutoff = new Date(now);
+  cutoff.setHours(cutoffHour, 0, 0, 0);
+
+  // ถ้าเลย 19:00 แล้ว ถือว่าเริ่มนับคิวตั้งแต่ "พรุ่งนี้"
+  const baseDay = now.getTime() >= cutoff.getTime() ? 1 : 0;
+
+  // จำนวนวันที่ต้องรอตามคิว (วันละ perDay ห้อง)
+  const dayFromQueue = Math.floor(pendingCount / perDay);
+
+  const est = new Date(cutoff);
+  est.setDate(est.getDate() + baseDay + dayFromQueue);
   return est;
 }
+
 
 // ✅ ตัดบรรทัด "คาดการณ์" ออก (ไม่ให้ถูกบันทึก/เผยแพร่ public)
 function stripEstimatedDate(text) {
@@ -187,9 +201,11 @@ async function computeStatsFromSnapshotDocs(docs) {
       if (Number.isFinite(c) && c > latestPostedCount) latestPostedCount = c;
     }
   }
-  const etaDate = estimateDateByQueueSize(pendingCount, PER_DAY_CAPACITY);
+  // ผูกกับรอบเปิดจริง 19:00
+  const etaDate = estimateDateByQueueSize(pendingCount, PER_DAY_CAPACITY, { cutoffHour: 19 });
   return { pendingCount, latestPostedCount, etaDate };
 }
+
 async function getQueueStatsOnce() {
   const snap = await admin.firestore().collection('auction_records').get();
   return computeStatsFromSnapshotDocs(snap.docs);
@@ -562,7 +578,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
     }
 
-    // กด "ไม่มีรูป" → โชว์พรีวิว + บันทึกเป็น pending (ให้นับคิว)
     if (interaction.customId === "no_image") {
       await interaction.deferReply({ ephemeral: true });
 
@@ -572,7 +587,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         const previewSummary = globalThis.lastFullSummary?.[channelId] || "⚠️ ไม่มีสรุป";
 
-        // ลบข้อความบอทเก่า (ยกเว้น embed หลัก)
         if (imageCollectorState.has(userId)) {
           const oldMsg = imageCollectorState.get(userId);
           try { await oldMsg.delete(); } catch {}
@@ -589,7 +603,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
           try { await m.delete(); } catch {}
         }
 
-        // โชว์พรีวิว (มีบรรทัดคาดการณ์)
         if (!imageCollectorState.has(userId)) {
           try {
             const msg = await interaction.channel.send({ content: previewSummary });
@@ -599,7 +612,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
           }
         }
 
-        // ✅ เซฟเอกสารเป็น pending (ไม่มีรูป) เพื่อให้นับคิว
         const baseName = interaction.channel.name.split("-").slice(0, 2).join("-");
         const summaryToSave = stripEstimatedDate(previewSummary);
         await admin.firestore().collection("auction_records").doc(channelId).set({
@@ -607,15 +619,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
           summary: summaryToSave,
           roomName: baseName,
           ownerId: userId,
-          publicChannelId: null, // ยังไม่เปิด public → pending
+          publicChannelId: null,
         }, { merge: true });
 
-        // แจ้งผล
         await interaction.editReply({
           content: "📷 บันทึกแบบไม่มีรูปแล้ว (นับรวมในคิว) และแสดงสรุปในห้องนี้เรียบร้อย",
         });
 
-        // ✅ อัปเดตแพแนลในห้องเป้าหมายทันที
         try {
           const stats = await getQueueStatsOnce();
           await updateAllBookingPanels(stats);
@@ -628,9 +638,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
   }
 
-  // ===== Modal Submit: auction_form =====
   if (interaction.isModalSubmit() && interaction.customId === "auction_form") {
-    await interaction.deferReply({ ephemeral: true }); // กัน Unknown interaction
+    await interaction.deferReply({ ephemeral: true });
 
     try {
       const filter = (m) => m.author.id === interaction.user.id;
@@ -650,10 +659,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const channelName = interaction.channel.name;
       const title = `# ${channelName.replace(/-/g, " ")}`;
 
-      // ใช้ความยาวคิวจริงจาก Firestore เพื่อคาดการณ์
       const statsNow = await getQueueStatsOnce();
-      const estDate  = estimateDateByQueueSize(statsNow.pendingCount, PER_DAY_CAPACITY);
-      const estThai  = formatThaiDate(estDate);
+const estDate  = estimateDateByQueueSize(statsNow.pendingCount, PER_DAY_CAPACITY, { cutoffHour: 19 });
+const estThai  = formatThaiDate(estDate);
 
       const fullSummary = `${title}
 
