@@ -413,71 +413,81 @@ if (nextRename) {
 
     // ===== ฟังก์ชันปิดประมูล (ใช้ร่วมทั้ง cron และคำสั่ง) =====
     const runCloseAuctions = async () => {
-      const recordsSnap = await db.collection("auction_records").get();
-      const guild = client.guilds.cache.first();
-      if (!guild) {
-        console.log("❌ ไม่พบ guild ใน client");
-        return;
-      }
+  const recordsSnap = await db.collection("auction_records").get();
+  const guild = client.guilds.cache.first();
+  if (!guild) {
+    console.log("❌ ไม่พบ guild ใน client");
+    return;
+  }
 
-      const historyChannelId = "1376195659501277286";
-      const historyChannel = guild.channels.cache.get(historyChannelId);
-      if (!historyChannel) {
-        console.log("❌ ไม่พบช่องประวัติการประมูล");
-        return;
-      }
+  const historyChannelId = "1376195659501277286";
+  const historyChannel = guild.channels.cache.get(historyChannelId);
+  if (!historyChannel) {
+    console.log("❌ ไม่พบช่องประวัติการประมูล");
+    return;
+  }
 
-      for (const doc of recordsSnap.docs) {
-        const record = doc.data();
-        const receptionChannelId = doc.id;
-        const bidChannelId = record.publicChannelId;
-        const ownerId = record.ownerId;
+  for (const doc of recordsSnap.docs) {
+    const record = doc.data();
+    const receptionChannelId = doc.id;
+    const bidChannelId = record.publicChannelId;
+    const ownerId = record.ownerId;
 
-        if (!receptionChannelId || !bidChannelId) continue;
+    if (!receptionChannelId || !bidChannelId) continue;
 
-        const receptionChannel = guild.channels.cache.get(receptionChannelId);
-        const bidChannel = guild.channels.cache.get(bidChannelId);
-        if (!receptionChannel || !bidChannel) continue;
+    const receptionChannel = guild.channels.cache.get(receptionChannelId);
+    const bidChannel = guild.channels.cache.get(bidChannelId);
+    if (!receptionChannel || !bidChannel) continue;
 
-        const bidDoc = await bidsRef.doc(bidChannelId).get();
-        const bidData = bidDoc.exists ? bidDoc.data() : null;
+    // --- ตัด suffix "-ล่าสุด-<ราคา>" ออกจากชื่อห้องสำหรับล็อกประวัติ ---
+    const cleanName =
+      (typeof parseBaseRoomName === "function" && parseBaseRoomName(bidChannel.name)) ||
+      String(bidChannel.name).replace(/-ล่าสุด-[\d.]+$/, "");
 
-        if (bidData?.userId && bidData?.price && bidData?.name) {
-          const { userId, price, name } = bidData;
-          const fee = price * 0.08;
+    const bidDoc = await bidsRef.doc(bidChannelId).get();
+    const bidData = bidDoc.exists ? bidDoc.data() : null;
 
-          await bidChannel.send(
-            `# จบการประมูล \n## คุณ ${name}\n## ชนะในราคา ${price} บาท\n<@${userId}>`
-          );
+    if (bidData?.userId && bidData?.price && bidData?.name) {
+      const { userId, price, name } = bidData;
+      const fee = price * 0.08;
 
-          await receptionChannel.permissionOverwrites.edit(userId, {
-            ViewChannel: true,
-            SendMessages: true,
-            ReadMessageHistory: true,
-          });
+      await bidChannel.send(
+        `# จบการประมูล \n## คุณ ${name}\n## ชนะในราคา ${price} บาท\n<@${userId}>`
+      );
 
-          await receptionChannel.send(
-            `# การประมูลได้จบลงไปแล้ว \n## คุณ <@${userId}>\n## ชนะในราคา ${price} บาท\n** คุณ <@${ownerId}> ส่งช่องทางการโอนให้กับคนที่ชนะประมูล\n และโอนค่าที่ประมูลใน <#1406333052736635000>\n เป็นจำนวน ${fee.toFixed(2)} บาท**`
-          );
+      await receptionChannel.permissionOverwrites.edit(userId, {
+        ViewChannel: true,
+        SendMessages: true,
+        ReadMessageHistory: true,
+      });
 
-          await historyChannel.send(
-            `# ${bidChannel.name}\n## คุณ <@${userId}>\n## ได้ไปในราคา ${price} บาท`
-          );
-        } else {
-          await bidChannel.send("# ปิดการประมูล\n## ไม่มีผู้ประมูลในห้องนี้");
-          await receptionChannel.send(
-            `# การประมูลได้จบลงแล้ว\n ## ขอแสดงความเสียใจด้วยคับ ไม่มีผู้ประมูล\n ## ไม่มีค่าที่ประมูลคับ หากจะลงประมูลใหม่ต้องกดตั๋วอีกครั้งคับ \n <@${ownerId}>`
-          );
-        }
+      await receptionChannel.send(
+        `# การประมูลได้จบลงไปแล้ว \n## คุณ <@${userId}>\n## ชนะในราคา ${price} บาท\n** คุณ <@${ownerId}> ส่งช่องทางการโอนให้กับคนที่ชนะประมูล\n และโอนค่าที่ประมูลใน <#1406333052736635000>\n เป็นจำนวน ${fee.toFixed(2)} บาท**`
+      );
 
-        // ลบข้อมูล bids
-        await bidsRef.doc(bidChannelId).delete().catch(() => {});
-        console.log(`🗑️ ลบข้อมูล bids ของห้อง ${bidChannel.name} เรียบร้อย`);
+      await historyChannel.send(
+        `# ${cleanName}\n## คุณ <@${userId}> ได้ไปในราคา ${price} บาท\n**เจ้าของประมูลคือ <@${ownerId}>**`
+      );
+    } else {
+      await bidChannel.send("# ปิดการประมูล\n## ไม่มีผู้ประมูลในห้องนี้");
+      await receptionChannel.send(
+        `# การประมูลได้จบลงแล้ว\n ## ขอแสดงความเสียใจด้วยคับ ไม่มีผู้ประมูล\n ## ไม่มีค่าที่ประมูลคับ หากจะลงประมูลใหม่ต้องกดตั๋วอีกครั้งคับ \n <@${ownerId}>`
+      );
 
-        // 🆕 เปลี่ยนเป็น "อ่านอย่างเดียว" + รีเนม
-        await lockChannelReadOnly(bidChannel, guild);
-      }
-    };
+      await historyChannel.send(
+        `# ${cleanName}\n## ปิดการประมูล — ไม่มีผู้ประมูล\n**เจ้าของประมูลคือ <@${ownerId}>**`
+      );
+    }
+
+    // ลบข้อมูล bids
+    await bidsRef.doc(bidChannelId).delete().catch(() => {});
+    console.log(`🗑️ ลบข้อมูล bids ของห้อง ${bidChannel.name} เรียบร้อย`);
+
+    // 🔒 เปลี่ยนเป็น "อ่านอย่างเดียว" + รีเนม
+    await lockChannelReadOnly(bidChannel, guild);
+  }
+};
+
 
     // ===== ตั้ง CRON ปิดประมูล: อังคาร/พฤหัส/เสาร์ 20:00 (เวลาไทย) =====
     const jobClose = schedule.scheduleJob(
