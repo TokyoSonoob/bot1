@@ -51,7 +51,6 @@ require("./pitekorn")(client);
 require("./clearchat")(client);
 require("./everyone")(client);
 require("./dis")(client);
-require("./x")(client);
 require("./ban")(client);
 
 
@@ -1025,3 +1024,4 @@ if (interaction.customId === "fill_info") {
 }
 });
 client.login(process.env.token);
+
