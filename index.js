@@ -60,7 +60,8 @@ require("./ban")(client);
 const BACKOFFICE_ROOT_NAME  = "หลังบ้านประมูล"; // หมวดหลักตัวแรก (ของเดิมคุณ)
 const BACKOFFICE_BASE_NAME  = "หลังบ้านประมูล"; // prefix (เราจะนับตั้งแต่ 2)
 const BACKOFFICE_START_N    = 2;
-const CATEGORY_MAX_CHANNELS = 50; // ปกติลิมิต text ต่อหมวด ~50
+const CATEGORY_MAX_CHANNELS = 50;
+const BACKOFFICE_MAX_N      = 4;
 
 function isCategory(ch) { return ch?.type === 4; }
 function childrenOf(guild, categoryId) {
@@ -90,27 +91,25 @@ function parseBackofficeN(name) {
  *  - คืน id ของหมวด "แรกที่ยังไม่เต็ม" ถ้าระบุ wantSlot=true
  */
 async function ensureBackofficeChain(guild, { wantSlot=false } = {}) {
-  // หา ROOT (ชื่อ “หลังบ้านประมูล”)
   const root = getCategoryByExactName(guild, BACKOFFICE_ROOT_NAME)
             || guild.channels.cache.find(ch => isCategory(ch) && ch.name === BACKOFFICE_ROOT_NAME)
             || null;
   if (!root) throw new Error(`ไม่พบหมวด "${BACKOFFICE_ROOT_NAME}"`);
 
   let lastCat = root;
-  let lastN   = 1;
 
-  // เดินตั้งแต่ 2 … สร้างต่อท้ายกันไปจนกว่าจะเจอช่องว่าง
-  // (เราไม่รู้ล่วงหน้าว่าต้องไปถึง N เท่าไร — จะเดินไปจนกว่าจะเจอ "อันที่ยังไม่เต็ม" ถ้า wantSlot)
-  for (let n = BACKOFFICE_START_N; n < BACKOFFICE_START_N + 50; n++) {
+  // เดินตั้งแต่ 2 → BACKOFFICE_MAX_N (เช่น 4)
+  for (let n = BACKOFFICE_START_N; n <= BACKOFFICE_MAX_N; n++) {
     const name = `${BACKOFFICE_BASE_NAME}${n}`;
     let cat = getCategoryByExactName(guild, name);
+
     if (!cat) {
-      // สร้างใหม่ "ใต้" lastCat
+      // ถ้าหาไม่เจอ ให้สร้างเฉพาะในกรอบ 2..MAX เท่านั้น
       cat = await guild.channels.create({ name, type: 4 }).catch(() => null);
       if (!cat) throw new Error(`create category "${name}" failed`);
       try { await cat.setPosition((lastCat.rawPosition ?? lastCat.position ?? 0) + 1); } catch {}
     } else {
-      // ถ้ามีอยู่แล้ว แต่อยู่ผิดตำแหน่ง → จัดให้ตาม lastCat
+      // จัดตำแหน่งต่อท้ายอันก่อนหน้า
       try {
         const should = (lastCat.rawPosition ?? lastCat.position ?? 0) + 1;
         if ((cat.rawPosition ?? cat.position ?? 0) < should) {
@@ -119,39 +118,27 @@ async function ensureBackofficeChain(guild, { wantSlot=false } = {}) {
       } catch {}
     }
 
-    // ถ้าต้องการ "หมวดแรกที่ยังไม่เต็ม" ก็คืนตรงนี้เลย
-    const used = countChildren(guild, cat.id);
-    if (wantSlot && used < CATEGORY_MAX_CHANNELS) return cat.id;
+    if (wantSlot) {
+      const used = countChildren(guild, cat.id);
+      if (used < CATEGORY_MAX_CHANNELS) return cat.id;
+    }
 
     lastCat = cat;
-    lastN   = n;
   }
 
-  // ถ้าไม่อยากได้ slot ให้คืน null
+  // ไม่มีช่องว่างในกรอบ 2..MAX
   return null;
 }
 
-/** หา/สร้าง "หมวดสำหรับเปิดห้องใหม่" โดยคงลำดับ ROOT→2→3→… และคืน id ของ "หมวดแรกที่ไม่เต็ม" */
 async function findOrCreateBackofficeSlot(guild) {
-  // จัดสายหมวดให้ครบ/เรียงก่อน
-  let slotId = await ensureBackofficeChain(guild, { wantSlot: true });
+  // เรียง/สร้างเฉพาะ 2..MAX แล้วคืน "ตัวแรกที่ยังไม่เต็ม"
+  const slotId = await ensureBackofficeChain(guild, { wantSlot: true });
   if (slotId) return slotId;
 
-  // ไม่มีอันว่าง → สร้างตัวถัดจาก "สุดท้าย" แล้วคืนมัน
-  const all = guild.channels.cache
-    .filter(ch => isCategory(ch) && (ch.name === BACKOFFICE_ROOT_NAME || /^หลังบ้านประมูล\d+$/.test(ch.name)))
-    .map(ch => ({ ch, n: ch.name === BACKOFFICE_ROOT_NAME ? 1 : parseBackofficeN(ch.name) }))
-    .filter(x => Number.isFinite(x.n))
-    .sort((a,b) => a.n - b.n);
-
-  const last = all[all.length - 1]?.ch;
-  const nextN = (all[all.length - 1]?.n || 1) + 1;
-  const name  = `${BACKOFFICE_BASE_NAME}${nextN}`;
-  const newCat = await guild.channels.create({ name, type: 4 }).catch(() => null);
-  if (!newCat) throw new Error(`create category "${name}" failed`);
-  if (last) { try { await newCat.setPosition((last.rawPosition ?? last.position ?? 0) + 1); } catch {} }
-  return newCat.id;
+  // ⛔ เต็มทั้ง 2..MAX แล้ว — ห้ามสร้าง "หลังบ้านประมูล5+" เด็ดขาด
+  return null;
 }
+
 
 /** ลบทุกหมวด "หลังบ้านประมูลN" ที่ไม่มีห้องภายใน (N>=2) */
 async function deleteEmptyBackofficeCategories(guild) {
@@ -547,13 +534,20 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
   if (interaction.isButton()) {
     // เปิดห้องส่วนตัว (ห้องรับรอง)
-    if (interaction.customId === "open_room") {
+   if (interaction.customId === "open_room") {
   await interaction.deferReply({ ephemeral: true });
   try {
-    // เลือก "หมวดแรกที่ยังไม่เต็ม" ตามลำดับ ROOT→2→3→…
     const parentId = await findOrCreateBackofficeSlot(interaction.guild);
 
-    // นับครั้งแล้วตั้งชื่อ (เหมือนเดิม)
+    // ⛔ เต็มทั้ง หลังบ้านประมูล2–4 → ไม่สร้างห้อง และแจ้งผู้ใช้
+    if (!parentId) {
+      await interaction.editReply({
+        content: "❌ ขณะนี้หมวด **หลังบ้านประมูล2–4** เต็มทั้งหมดแล้ว (งดสร้างหมวดใหม่) กรุณารอแอดมินเคลียร์คิวหรือย้ายห้องก่อนนะครับ",
+      });
+      return;
+    }
+
+    // ===== เดิม: นับครั้ง + สร้างห้อง =====
     const counterRef = admin.firestore().collection("auction_counters").doc("counter");
     const counterSnap = await counterRef.get();
     let latestCount = 0;
@@ -607,6 +601,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 }
 
 
+
     // ✅ ปุ่ม "แจ้งแอดมินปิดห้อง" ในห้องรับรอง
     if (interaction.customId === "notify_admin_close") {
       await interaction.deferReply({ ephemeral: true });
@@ -620,17 +615,20 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     // ปิดห้องส่วนตัว
-    if (interaction.customId === "close_channel") {
-      await interaction.deferReply({ ephemeral: true });
-      const member = await guild.members.fetch(interaction.user.id);
-      if (!member.permissions.has(PermissionsBitField.Flags.ManageChannels)) {
-        return interaction.editReply({ content: "❌ คุณไม่มีสิทธิ์ปิดห้องนี้" });
-      }
-      await interaction.editReply({ content: "🗑️ ลบห้องเรียบร้อย..." });
-      const channelId = interaction.channel.id;
-      await admin.firestore().collection("auction_records").doc(channelId).delete().catch(console.warn);
-      await interaction.channel.delete().catch(() => {});
-    }
+   if (interaction.customId === "close_channel") {
+  await interaction.deferReply({ ephemeral: true });
+  const member = await guild.members.fetch(interaction.user.id);
+  if (!member.permissions.has(PermissionsBitField.Flags.ManageChannels)) {
+    return interaction.editReply({ content: "❌ คุณไม่มีสิทธิ์ปิดห้องนี้" });
+  }
+  await interaction.editReply({ content: "🗑️ ลบห้องเรียบร้อย..." });
+  const channelId = interaction.channel.id;
+  await admin.firestore().collection("auction_records").doc(channelId).delete().catch(console.warn);
+  await interaction.channel.delete().catch(() => {});
+  // ✅ เรียกรีบาลานซ์หลังลบ
+  try { await rebalanceBackofficeChain(guild); } catch {}
+}
+
 
     // เปิด modal กรอกข้อมูล
     // ...เดิม...
