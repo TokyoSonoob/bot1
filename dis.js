@@ -52,7 +52,7 @@ module.exports = function (client) {
 
   function makeStartRow() {
     return new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId(BTN_MARKUS).setStyle(ButtonStyle.Primary).setLabel("ลายเส้นมาคัส"),
+      new ButtonBuilder().setCustomId(BTN_MARKUS).setStyle(ButtonStyle.Primary).setLabel("ลายเส้นหลิน"),
       new ButtonBuilder().setCustomId(BTN_MIKA).setStyle(ButtonStyle.Secondary).setLabel("ลายเส้นมิกะ")
     );
   }
@@ -161,7 +161,7 @@ module.exports = function (client) {
           await interaction.deferReply({ ephemeral: true }); // << ป้องกัน 10062
 
           const isMarkus = interaction.customId === BTN_MARKUS;
-          const roomName = isMarkus ? "ดิสคอร์สมาคัส" : "ดิสคอร์สมิกะ";
+          const roomName = isMarkus ? "ดิสคอร์สหลิน" : "ดิสคอร์สมิกะ";
           const tagTarget = isMarkus ? TAG_MARKUS : TAG_MIKA;
 
           const ch = await interaction.guild.channels.create({
@@ -207,7 +207,7 @@ module.exports = function (client) {
 
           await ch.send({
             content: `<@${interaction.user.id}> <@${tagTarget}>`,
-            embeds: [makeRoomIntroEmbed(isMarkus ? "ลายเส้นมาคัส" : "ลายเส้นมิกะ")],
+            embeds: [makeRoomIntroEmbed(isMarkus ? "ลายเส้นหลิน" : "ลายเส้นมิกะ")],
             components: [makeCloseRow()],
           });
 
@@ -248,7 +248,7 @@ module.exports = function (client) {
         const rooms = interaction.fields.getTextInputValue(FIELD_ROOMS);
 
         const channelName = interaction.channel?.name || "";
-        const tagTarget = /มาคัส/.test(channelName) ? TAG_MARKUS : TAG_MIKA;
+        const tagTarget = /หลิน/.test(channelName) ? TAG_MARKUS : TAG_MIKA;
 
         const summary = new EmbedBuilder()
           .setColor(0x7f46c6)
