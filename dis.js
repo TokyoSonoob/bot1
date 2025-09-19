@@ -15,7 +15,7 @@ module.exports = function (client) {
   const CATEGORY_ID = "1412444521748234351";
   const STAFF_ROLE_ID = "1412438788612948028";
   const PRICE_CHANNELS = "1412441581746782359";
-  const TAG_MARKUS = "1260596435314020355";
+  const TAG_MARKUS = "1371354005216694374";
   const TAG_MIKA = "1281587649513259087";
 
   const BTN_MARKUS = "dis_create_markus";
