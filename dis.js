@@ -15,7 +15,7 @@ module.exports = function (client) {
   const CATEGORY_ID = "1412444521748234351";
   const STAFF_ROLE_ID = "1412438788612948028";
   const PRICE_CHANNELS = "1412441581746782359";
-  const TAG_MARKUS = "1371354005216694374";
+  const TAG_MARKUS = "1371354005216694374"; // หลิน
   const TAG_MIKA = "1281587649513259087";
 
   const BTN_MARKUS = "dis_create_markus";
@@ -36,8 +36,7 @@ module.exports = function (client) {
         return await interaction.followUp(options);
       }
       return await interaction.reply(options);
-    } catch (e) {
-      // fallback เล็กน้อย ป้องกัน Unknown interaction ซ้ำ
+    } catch {
       try { return await interaction.followUp(options); } catch {}
     }
   }
@@ -158,7 +157,7 @@ module.exports = function (client) {
       if (interaction.isButton()) {
         // ----- Create ticket (DEFER FIRST!) -----
         if ([BTN_MARKUS, BTN_MIKA].includes(interaction.customId)) {
-          await interaction.deferReply({ ephemeral: true }); // << ป้องกัน 10062
+          await interaction.deferReply({ ephemeral: true }); // ป้องกัน Unknown interaction (10062)
 
           const isMarkus = interaction.customId === BTN_MARKUS;
           const roomName = isMarkus ? "ดิสคอร์สหลิน" : "ดิสคอร์สมิกะ";
@@ -213,21 +212,23 @@ module.exports = function (client) {
 
           await ch.send({ embeds: [makeDetailEmbed()], components: [makeOpenFormRow()] });
 
-          // ตอบกลับที่ defer ไว้
           await interaction.editReply({ content: `สร้างห้อง <#${ch.id}> เรียบร้อย` });
           return;
         }
 
         // ----- Close room -----
         if (interaction.customId === BTN_CLOSE) {
-          // ตอบเร็วๆ พอ
           const ch = interaction.channel;
           if (!ch) return;
-          const isManager = interaction.member.permissions.has(PermissionsBitField.Flags.ManageChannels);
-          const isOwner = ch.topic?.includes(`owner:${interaction.user.id}`);
-          if (!isManager && !isOwner) {
-            return safeReply(interaction, { content: "คุณไม่มีสิทธิ์ปิดห้องนี้", ephemeral: true });
+
+          // ✅ UPDATED: อนุญาตเฉพาะ Administrator หรือผู้ที่มี STAFF_ROLE_ID เท่านั้น
+          const isAdmin = interaction.member.permissions.has(PermissionsBitField.Flags.Administrator);
+          const hasStaffRole = interaction.member.roles?.cache?.has(STAFF_ROLE_ID);
+
+          if (!isAdmin && !hasStaffRole) {
+            return safeReply(interaction, { content: "❌ คุณไม่มีสิทธิ์ปิดตั๋วนี้", ephemeral: true });
           }
+
           await safeReply(interaction, { content: "กำลังปิดห้อง...", ephemeral: true });
           await ch.delete().catch(() => {});
           return;
