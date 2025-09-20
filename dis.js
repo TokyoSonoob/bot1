@@ -1,4 +1,3 @@
-// tickets-dis.js
 const {
   Events,
   PermissionsBitField,
