@@ -7,6 +7,7 @@ const {
   ButtonStyle,
   ActionRowBuilder,
   PermissionsBitField,
+  MessageFlags, // ✅ ใช้ flags แทน ephemeral
 } = require("discord.js");
 const express = require("express");
 const { db } = require("./firebase");
@@ -32,6 +33,7 @@ module.exports = function (client) {
     skin_kim: "ลายเส้นขิม",
     skin_nj: "ลายเส้น NJ",
   };
+
   const argToCustomId = (raw) => {
     if (!raw) return null;
     const key = String(raw).toLowerCase();
@@ -44,9 +46,10 @@ module.exports = function (client) {
   };
 
   const isAdminOrStaff = (member) =>
-    member.permissions.has(PermissionsBitField.Flags.Administrator) ||
-    member.roles.cache.has(STAFF_ROLE_ID);
+    member?.permissions?.has(PermissionsBitField.Flags.Administrator) ||
+    member?.roles?.cache?.has(STAFF_ROLE_ID);
 
+  // ===== Commands =====
   client.on("messageCreate", async (message) => {
     if (message.author.bot) return;
     if (!message.content.startsWith(PREFIX)) return;
@@ -74,7 +77,7 @@ module.exports = function (client) {
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId("skin_hi").setLabel(LABELS.skin_hi).setStyle(ButtonStyle.Primary),
         new ButtonBuilder().setCustomId("skin_sky").setLabel(LABELS.skin_sky).setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId("skin_muy").setLabel(LABELS.skin_muy).setStyle(ButtonStyle.Primary), // เปลี่ยนเป็น muy
+        new ButtonBuilder().setCustomId("skin_muy").setLabel(LABELS.skin_muy).setStyle(ButtonStyle.Primary),
         new ButtonBuilder().setCustomId("skin_kim").setLabel(LABELS.skin_kim).setStyle(ButtonStyle.Primary),
         new ButtonBuilder().setCustomId("skin_nj").setLabel(LABELS.skin_nj).setStyle(ButtonStyle.Primary)
       );
@@ -82,6 +85,8 @@ module.exports = function (client) {
       await message.channel.send({ embeds: [embed], components: [row] });
       await message.delete().catch(() => {});
     }
+
+    // ปิดปุ่มบางคน: !closeskin <hi|sky|muy|kim|nj>
     if (command === "closeskin") {
       if (!isAdminOrStaff(message.member)) {
         await message.delete().catch(() => {});
@@ -133,10 +138,7 @@ module.exports = function (client) {
         const exists = currentRow.components.some((btn) => btn.customId === customIdToAdd);
 
         if (!exists) {
-          // จำกัดสูงสุด 5 ปุ่ม/แถวตามข้อกำหนด Discord
-          if (currentRow.components.length >= 5) {
-            // เต็มแล้ว ไม่เพิ่ม
-          } else {
+          if (currentRow.components.length < 5) {
             const newButton = new ButtonBuilder()
               .setCustomId(customIdToAdd)
               .setLabel(LABELS[customIdToAdd] || "ลายเส้น")
@@ -151,19 +153,23 @@ module.exports = function (client) {
     }
   });
 
-  // ========= ปุ่มกดเปิดตั๋ว / ลบตั๋ว =========
+  // ===== Interaction Buttons =====
   client.on("interactionCreate", async (interaction) => {
     if (!interaction.isButton()) return;
 
-    const { guild, user } = interaction;
+    const { guild, user, member } = interaction;
 
+    // เปิดตั๋วสกิน
     if (
       interaction.customId === "skin_hi" ||
       interaction.customId === "skin_sky" ||
-      interaction.customId === "skin_muy" || // เปลี่ยนเป็น muy
+      interaction.customId === "skin_muy" ||
       interaction.customId === "skin_kim" ||
       interaction.customId === "skin_nj"
     ) {
+      // ✅ ACK ไว้ก่อน กัน 10062
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
       let skinName = "";
       let channelName = "";
       let pingUserId = "";
@@ -179,7 +185,7 @@ module.exports = function (client) {
           channelName = `สกินคุณสกาย`;
           pingUserId = OWNER_IDS.skin_sky;
           break;
-        case "skin_muy": // เปลี่ยนจาก skin_mui
+        case "skin_muy":
           skinName = "ลายเส้นคุณมุย";
           channelName = `สกินมุยคุง`;
           pingUserId = OWNER_IDS.skin_muy;
@@ -196,6 +202,7 @@ module.exports = function (client) {
           break;
       }
 
+      // จำกัดไม่เกิน 3 ห้อง/คน/ลายเส้น
       const userChannels = guild.channels.cache.filter(
         (ch) =>
           ch.parentId === CATEGORY_ID &&
@@ -204,12 +211,13 @@ module.exports = function (client) {
       );
 
       if (userChannels.size >= 3) {
-        return interaction.reply({
+        await interaction.editReply({
           content: `❗ คุณสามารถเปิดตั๋วลายเส้น ${skinName} ได้สูงสุด 3 ห้องเท่านั้น (ตอนนี้เปิดอยู่ ${userChannels.size} ห้อง)`,
-          ephemeral: true,
         });
+        return;
       }
 
+      // สร้างห้อง
       const channel = await guild.channels.create({
         name: channelName,
         type: 0,
@@ -239,19 +247,32 @@ module.exports = function (client) {
         components: [row],
       });
 
-      await interaction.reply({
-        content: `✅ เปิดตั๋วสกินลายเส้น${skinName} แล้ว: ${channel}`,
-        ephemeral: true,
+      await interaction.editReply({
+        content: `✅ เปิดตั๋วสกินลายเส้น ${skinName} แล้ว: ${channel}`,
       });
+      return;
     }
 
+    // ลบตั๋ว
     if (interaction.customId === "delete_ticket") {
-      try {
-        await interaction.deferUpdate();
-        await interaction.channel.delete().catch(console.error);
-      } catch (err) {
-        console.error(err);
+      if (!isAdminOrStaff(member)) {
+        return interaction.reply({
+          content: "❌ คุณไม่มีสิทธิ์ลบตั๋วนี้ (เฉพาะแอดมินหรือสตาฟเท่านั้น)",
+          flags: MessageFlags.Ephemeral, // ✅ ใช้ flags
+        });
       }
+
+      // ✅ ตอบก่อน แล้วค่อยลบห้องกัน 10062
+      await interaction.reply({
+        content: "🗑️ กำลังลบตั๋ว...",
+        flags: MessageFlags.Ephemeral,
+      });
+
+      setTimeout(() => {
+        interaction.channel?.delete().catch(console.error);
+      }, 250);
+
+      return;
     }
   });
 };
