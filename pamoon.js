@@ -169,50 +169,51 @@ async function updateAuctionRoomNamesWithLatestBid() {
   }
 
   // 🆕 helper: ล็อกให้ "อ่านอย่างเดียว" (ทุกคนเห็นได้แต่พิมพ์ไม่ได้) + รีเนมเป็น ❌ ปิดการประมูล
-  async function lockChannelReadOnly(channel, guild) {
-    try {
-      // ทุกคน: มองเห็น/อ่านประวัติได้ แต่ห้ามส่งข้อความ/สร้างเธรด/แนบไฟล์/ลิงก์/อีโมจิภายนอก
-      await channel.permissionOverwrites.edit(guild.roles.everyone, {
-        ViewChannel: true,
-        ReadMessageHistory: true,
-        SendMessages: false,
-        AddReactions: false,
-        SendMessagesInThreads: false,
-        CreatePublicThreads: false,
-        CreatePrivateThreads: false,
-        SendTTSMessages: false,
-        AttachFiles: false,
-        EmbedLinks: false,
-        UseExternalEmojis: false,
-        UseExternalStickers: false,
-      });
+  // 🆕 helper: ล็อกแล้ว “ซ่อนห้องจาก @everyone” + รีเนมเป็น ❌ ปิดการประมูล
+async function lockChannelReadOnly(channel, guild) {
+  try {
+    // ซ่อนจากทุกคน (@everyone) และปิดสิทธิ์อื่นๆ ให้ชัดเจน
+    await channel.permissionOverwrites.edit(guild.roles.everyone, {
+      ViewChannel: false,              // <<< ซ่อนห้อง
+      SendMessages: false,
+      AddReactions: false,
+      SendMessagesInThreads: false,
+      CreatePublicThreads: false,
+      CreatePrivateThreads: false,
+      SendTTSMessages: false,
+      AttachFiles: false,
+      EmbedLinks: false,
+      UseExternalEmojis: false,
+      UseExternalStickers: false,
+      ReadMessageHistory: false,
+    });
 
-      // บอท: คงสิทธิ์เพื่อประกาศเพิ่มเติม/แก้ไขห้องได้
-      await channel.permissionOverwrites.edit(client.user.id, {
-        ViewChannel: true,
-        ReadMessageHistory: true,
-        SendMessages: true,
-        ManageChannels: true,
-        EmbedLinks: true,
-        AttachFiles: true,
-      });
+    // ให้บอทยังเข้ามาจัดการ/โพสต์ได้
+    await channel.permissionOverwrites.edit(client.user.id, {
+      ViewChannel: true,
+      ReadMessageHistory: true,
+      SendMessages: true,
+      ManageChannels: true,
+      EmbedLinks: true,
+      AttachFiles: true,
+    });
 
-      // เปลี่ยนชื่อห้อง
-      if (channel.name !== "❌ ปิดการประมูล") {
-        await channel.setName("❌ ปิดการประมูล").catch(() => {});
-      }
-
-      // เคลียร์ timeout ของห้องนี้ถ้ามี
-      if (bidTimeouts.has(channel.id)) {
-        clearTimeout(bidTimeouts.get(channel.id));
-        bidTimeouts.delete(channel.id);
-      }
-
-      console.log(`🔒 ล็อกอ่านอย่างเดียว + รีเนม: ${channel.name}`);
-    } catch (e) {
-      console.error("❌ ล็อกอ่านอย่างเดียว/รีเนมล้มเหลว:", e);
+    // รีเนมเป็น “❌ ปิดการประมูล”
+    if (channel.name !== "❌ ปิดการประมูล") {
+      await channel.setName("❌ ปิดการประมูล").catch(() => {});
     }
+
+    // เคลียร์ timeout ของห้องนี้ถ้ามี
+    if (bidTimeouts.has(channel.id)) {
+      clearTimeout(bidTimeouts.get(channel.id));
+      bidTimeouts.delete(channel.id);
+    }
+
+    console.log(`🔒 ซ่อนห้อง + รีเนมแล้ว: ${channel.id}`);
+  } catch (e) {
+    console.error("❌ ล็อก/ซ่อนห้องล้มเหลว:", e);
   }
+}
 
   // ===== helper: ดึงแนบรูปจาก permaLink (ข้อความในช่องถาวร) =====
   async function getAttachmentsFromPermaLink(permaLink) {
@@ -461,9 +462,16 @@ if (nextRename) {
         ReadMessageHistory: true,
       });
 
-      await receptionChannel.send(
-        `# การประมูลได้จบลงไปแล้ว \n## คุณ <@${userId}>\n## ชนะในราคา ${price} บาท\n** คุณ <@${ownerId}> ส่งช่องทางการโอนให้กับคนที่ชนะประมูล\n และโอนค่าที่ประมูลใน <#1406333052736635000>\n เป็นจำนวน ${fee.toFixed(2)} บาท**`
-      );
+      await receptionChannel.send({
+  content:
+    `# การประมูลได้จบลงไปแล้ว \n` +
+    `## คุณ <@${userId}>\n` +
+    `## ชนะในราคา ${price} บาท\n` +
+    `** คุณ <@${ownerId}> ส่งช่องทางการโอนให้กับคนที่ชนะประมูล\n` +
+    ` และโอนค่าที่ประมูลด้านล่างเลออ\n` +
+    ` เป็นจำนวน ${fee.toFixed(2)} บาท**`,
+  embeds: [embed],
+});
 
       await historyChannel.send(
         `# ${cleanName}\n## คุณ <@${userId}> ได้ไปในราคา ${price} บาท\n**เจ้าของประมูลคือ <@${ownerId}>**`
@@ -776,9 +784,16 @@ if (nextRename) {
         });
 
         const fee = price * 0.08;
-        await receptionChannel.send(
-          `# การประมูลได้จบลงไปแล้ว \n## คุณ <@${userId}>\n## ชนะในราคา ${price} บาท\n** คุณ <@${receptionRecord.ownerId}> ส่งช่องทางการโอนให้กับคนที่ชนะประมูล\n และโอนค่าที่ประมูลใน <#1406333052736635000>\n เป็นจำนวน ${fee.toFixed(2)} บาท**`
-        );
+        await receptionChannel.send({
+  content:
+    `# การประมูลได้จบลงไปแล้ว \n` +
+    `## คุณ <@${userId}>\n` +
+    `## ชนะในราคา ${price} บาท\n` +
+    `** คุณ <@${ownerId}> ส่งช่องทางการโอนให้กับคนที่ชนะประมูล\n` +
+    ` และโอนค่าที่ประมูลด้านล่างเลออ\n` +
+    ` เป็นจำนวน ${fee.toFixed(2)} บาท**`,
+  embeds: [embed],
+});
 
         await db.collection("bids").doc(bidChannelId).delete().catch(() => {});
         console.log("✅ จบการประมูลเรียบร้อย");
