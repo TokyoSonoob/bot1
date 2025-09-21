@@ -42,10 +42,11 @@ const labels = {
   eye_blink: "ตากระพริบ",
   eye_blink_new: "ตากระพริบใหม่",
   boobs: "หน้าอก",
-  bangs: "ปอยผม",          // แยก embed
+  bangs: "ปอยผม",
   glow_eye: "ตาเรืองแสง",
   eye_move: "ตาขยับ",
-  buff: "เอฟเฟก/บัฟ",      // บัฟละ 5 บาท (แยก embed)
+  buff: "เอฟเฟก/บัฟ",
+  face_change: "เปลี่ยนสีหน้า",
 };
 const prices = {
   hair_move: 30,
@@ -55,6 +56,7 @@ const prices = {
   boobs: 25,
   glow_eye: 35,
   eye_move: 100,
+  face_change: 100,
 };
 
 const PER_PIECE = 10;      // ราคา/จุด สำหรับ "ปอยผม"
@@ -266,7 +268,7 @@ module.exports = function (client) {
 
       const embed = new EmbedBuilder()
         .setTitle("สั่งงานแอดออนสกิน")
-        .setDescription("**แอดออนสกินดูเรทราคาได้ที่ <#1406520839880445962>\nรวมแอดออนสกิน สกินละ10บาทสนใจกดตั๋วเลย\nจ่ายเงินครบก่อนถึงจะเริ่มงานนะคับ\nงานจะเสร็จภายใน 1-3 วันน้าาา**")
+        .setDescription("**แอดออนสกินดูเรทราคาได้ที่ <#1418840494108180602>\nรวมแอดออนสกิน สกินละ10บาทสนใจกดตั๋วเลย\nจ่ายเงินครบก่อนถึงจะเริ่มงานนะคับ\nงานจะเสร็จภายใน 1-3 วันน้าาา**")
         .setColor(0x9b59b6)
         .setImage("https://giffiles.alphacoders.com/220/220120.gif")
         .setFooter({ text: "Make by Purple Shop" });
@@ -276,6 +278,7 @@ module.exports = function (client) {
         new ButtonBuilder().setCustomId("create_ticket_bundle").setLabel("รวมแอดออนสกิน").setStyle(ButtonStyle.Primary),
         new ButtonBuilder().setCustomId("create_ticket_preset").setLabel("โมเดลสำเร็จ").setStyle(ButtonStyle.Primary),
         new ButtonBuilder().setCustomId("create_ticket_sculpt").setLabel("สั่งงานปั้นโมเดล").setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId("create_ticket_figura").setLabel("สั่งฟิกุร่า Java").setStyle(ButtonStyle.Primary),
       );
 
       await message.channel.send({ embeds: [embed], components: [row] });
@@ -304,11 +307,9 @@ module.exports = function (client) {
     try {
       const guildId = interaction.guild.id;
       const settingsDoc = await db.doc(`ticket_settings/${guildId}`).get();
-
-      // หมวดหมู่ที่จะใช้: sculpt ใช้ MODEL_CATEGORY_ID, โหมดอื่นใช้ค่า config ใน DB
-      const parentCategoryId = (mode === "sculpt")
-        ? MODEL_CATEGORY_ID
-        : (settingsDoc.exists && settingsDoc.data().categoryId) ? settingsDoc.data().categoryId : null;
+      const parentCategoryId = (mode === "sculpt" || mode === "figura")
+  ? MODEL_CATEGORY_ID
+  : (settingsDoc.exists && settingsDoc.data().categoryId) ? settingsDoc.data().categoryId : null;
 
       if (!parentCategoryId) {
         await ensureDeferred(interaction, true);
@@ -321,23 +322,25 @@ module.exports = function (client) {
         return null;
       }
 
-      const channelName =
-        mode === "sculpt"
+      const channelName = 
+      mode === "sculpt"
           ? `🔥-𝕄𝕠𝕕𝕖𝕝_${interaction.user.username}`
-          : `🔥-𝕋𝕚𝕔𝕜𝕖𝕥_${interaction.user.username}`;
+          : mode === "figura"
+              ? `🔥-𝔽𝕚𝕘𝕦𝕣𝕒_${interaction.user.username}`
+              : `🔥-𝕋𝕚𝕔𝕜𝕖𝕥_${interaction.user.username}`;
 
       // 🆕 สร้าง overwrites และเพิ่มสิทธิ์ให้โรลโมเดลในโหมด sculpt
       const overwrites = [
-        { id: interaction.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
-        { id: interaction.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages] },
-        { id: client.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ManageChannels] },
-      ];
-      if (mode === "sculpt") {
-        overwrites.push({
-          id: MODEL_ROLE_ID,
-          allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages],
-        });
-      }
+  { id: interaction.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
+  { id: interaction.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages] },
+  { id: client.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ManageChannels] },
+];
+if (mode === "sculpt" || mode === "figura") {
+  overwrites.push({
+    id: MODEL_ROLE_ID,
+    allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages],
+  });
+}
 
       const channel = await interaction.guild.channels.create({
         name: channelName,
@@ -351,7 +354,7 @@ module.exports = function (client) {
 
       const openEmbed = new EmbedBuilder()
         .setTitle("ขอบคุณที่ไว้ใจร้านเรา")
-        .setDescription("กรอก/เลือกข้อมูลที่ด้านล่างได้เลยนะคับ")
+        .setDescription("กรอก/แจ้งข้อมูลที่ด้านล่างได้เลยนะคับ")
         .setColor(0x9b59b6);
 
       const closeRow = new ActionRowBuilder().addComponents(
@@ -359,9 +362,9 @@ module.exports = function (client) {
       );
 
       const contentTag =
-        mode === "sculpt"
-          ? `<@${interaction.user.id}> <@&${MODEL_ROLE_ID}>`
-          : `<@${interaction.user.id}>`;
+  (mode === "sculpt" || mode === "figura")
+    ? `<@${interaction.user.id}> <@&${MODEL_ROLE_ID}>`
+    : `<@${interaction.user.id}>`;
 
       await channel.send({ content: contentTag, embeds: [openEmbed], components: [closeRow] });
 
@@ -462,13 +465,15 @@ module.exports = function (client) {
           interaction.customId === "create_ticket_standard" ||
           interaction.customId === "create_ticket_bundle" ||
           interaction.customId === "create_ticket_preset" ||
-          interaction.customId === "create_ticket_sculpt"
+          interaction.customId === "create_ticket_sculpt" ||
+          interaction.customId === "create_ticket_figura"
         ) {
           await ensureDeferred(interaction, true);
           const mode =
             interaction.customId === "create_ticket_standard" ? "standard" :
             interaction.customId === "create_ticket_bundle"   ? "bundle"   :
             interaction.customId === "create_ticket_preset"   ? "preset"   :
+            interaction.customId === "create_ticket_figura"   ? "figura"   :
                                                                  "sculpt";
           await createTicketChannel(interaction, mode);
           return;
@@ -604,7 +609,10 @@ module.exports = function (client) {
           if (selected.includes("eye_blink") && selected.includes("eye_blink_new")) {
             selected = selected.filter(v => v !== "eye_blink");
           }
-
+           if (selected.includes("face_change")) {
+            if (!selected.includes("eye_move")) selected.push("eye_move");
+            if (!selected.includes("eye_blink_new")) selected.push("eye_blink_new");
+          }
           await interaction.deferUpdate();
 
           const k = keyOf(interaction.user.id, interaction.channel.id);
