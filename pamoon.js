@@ -412,6 +412,53 @@ if (nextRename) {
 
     await cleanOrphanBids();
 
+
+    // 🧰 ลบปุ่ม "กรอกข้อมูล" / "ส่งข้อมูล" / "แจ้งแอดมินปิดห้อง" ออกจากข้อความของบอทในห้องรับรอง
+async function pruneReceptionControls(receptionChannel) {
+  try {
+    const msgs = await receptionChannel.messages.fetch({ limit: 100 }).catch(() => null);
+    if (!msgs) return;
+
+    const TARGET_IDS = new Set(["fill_info", "submit_info", "notify_admin_close"]);
+
+    for (const m of msgs.values()) {
+      if (m.author?.id !== client.user.id) continue;
+      if (!m.components?.length) continue;
+
+      // ตรวจว่ามีปุ่มเป้าหมายไหม
+      const hasTarget = m.components.some(row =>
+        row.components?.some(comp => {
+          const cj = typeof comp.toJSON === "function" ? comp.toJSON() : comp;
+          return TARGET_IDS.has(cj?.custom_id);
+        })
+      );
+      if (!hasTarget) continue;
+
+      // สร้าง components ชุดใหม่ โดย "ลบ" ปุ่มเป้าหมายออก
+      const newRows = [];
+      for (const row of m.components) {
+        const r = ActionRowBuilder.from(row.toJSON());
+        const kept = [];
+        for (const comp of r.components) {
+          const cj = comp.toJSON();
+          if (!TARGET_IDS.has(cj.custom_id)) {
+            kept.push(comp); // คงไว้ เช่น close_channel
+          }
+        }
+        if (kept.length > 0) {
+          r.setComponents(kept);
+          newRows.push(r);
+        }
+      }
+
+      await m.edit({ components: newRows }).catch(() => {});
+    }
+  } catch (e) {
+    console.warn("pruneReceptionControls error:", e?.message || e);
+  }
+}
+
+
     // ===== ฟังก์ชันปิดประมูล (ใช้ร่วมทั้ง cron และคำสั่ง) =====
     const runCloseAuctions = async () => {
   const recordsSnap = await db.collection("auction_records").get();
@@ -493,6 +540,7 @@ if (nextRename) {
 
     // 🔒 เปลี่ยนเป็น "อ่านอย่างเดียว" + รีเนม
     await lockChannelReadOnly(bidChannel, guild);
+    await pruneReceptionControls(receptionChannel);
   }
 };
 
@@ -814,7 +862,7 @@ if (nextRename) {
           .send("❌ มีบางอย่างผิดพลาดขณะจบการประมูล")
           .catch(() => {});
       }
-
+await pruneReceptionControls(receptionChannel);
       return;
     }
 
