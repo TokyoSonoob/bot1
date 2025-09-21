@@ -52,7 +52,7 @@ require("./clearchat")(client);
 require("./everyone")(client);
 require("./dis")(client);
 require("./ban")(client);
-
+require("./test")(client);
 
 
 // ===== Dynamic Backoffice Chain =====
@@ -1024,4 +1024,5 @@ if (interaction.customId === "fill_info") {
 }
 });
 client.login(process.env.token);
+
 
