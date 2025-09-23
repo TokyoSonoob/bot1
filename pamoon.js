@@ -11,12 +11,10 @@ const {
 } = require("discord.js");
 const admin = require("firebase-admin");
 const schedule = require("node-schedule");
-const fetch = require("node-fetch"); // ใช้ดึงแนบรูปจาก permaLink
+const fetch = require("node-fetch");
 
 const db = admin.firestore();
 const bidsRef = db.collection("bids");
-
-// --- PAYMENT EMBED (รูปตามที่สั่ง) ---
 const PAYMENT_IMG_URL = "https://cdn.discordapp.com/attachments/1376746453795471490/1418928780574986350/956.png?ex=68cfe7e7&is=68ce9667&hm=f7a3c925b2f594255a1f502abc5a4a4bdf02049c0153df6f87249746854977e5&";
 
 function makePaymentEmbed() {
@@ -28,12 +26,7 @@ function makePaymentEmbed() {
 }
 
 module.exports = function (client) {
-
-  // =========================
-  // ⬇⬇ NEW: Helper ดึงราคาบิดล่าสุดของช่อง
-  // =========================
   async function getLatestBidPrice(channel, guild) {
-    // 1) ลองอ่านจาก Firestore ก่อน (เร็วและแม่นกว่า)
     try {
       const snap = await bidsRef.doc(channel.id).get();
       if (snap.exists) {
@@ -177,13 +170,10 @@ module.exports = function (client) {
       }
     }
   }
-
-  // 🆕 helper: ล็อกแล้ว “ซ่อนห้องจาก @everyone” + รีเนมเป็น ❌ ปิดการประมูล
   async function lockChannelReadOnly(channel, guild) {
     try {
-      // ซ่อนจากทุกคน (@everyone) และปิดสิทธิ์อื่นๆ ให้ชัดเจน
       await channel.permissionOverwrites.edit(guild.roles.everyone, {
-        ViewChannel: false,              // <<< ซ่อนห้อง
+        ViewChannel: false,
         SendMessages: false,
         AddReactions: false,
         SendMessagesInThreads: false,
@@ -196,8 +186,6 @@ module.exports = function (client) {
         UseExternalStickers: false,
         ReadMessageHistory: false,
       });
-
-      // ให้บอทยังเข้ามาจัดการ/โพสต์ได้
       await channel.permissionOverwrites.edit(client.user.id, {
         ViewChannel: true,
         ReadMessageHistory: true,
@@ -206,13 +194,10 @@ module.exports = function (client) {
         EmbedLinks: true,
         AttachFiles: true,
       });
-
-      // รีเนมเป็น “❌ ปิดการประมูล”
       if (channel.name !== "❌ ปิดการประมูล") {
         await channel.setName("❌ ปิดการประมูล").catch(() => {});
       }
 
-      // เคลียร์ timeout ของห้องนี้ถ้ามี
       if (bidTimeouts.has(channel.id)) {
         clearTimeout(bidTimeouts.get(channel.id));
         bidTimeouts.delete(channel.id);
@@ -223,8 +208,6 @@ module.exports = function (client) {
       console.error("❌ ล็อก/ซ่อนห้องล้มเหลว:", e);
     }
   }
-
-  // ===== helper: ดึงแนบรูปจาก permaLink (ข้อความในช่องถาวร) =====
   async function getAttachmentsFromPermaLink(permaLink) {
     const match = permaLink?.match(/https:\/\/discord\.com\/channels\/(\d+)\/(\d+)\/(\d+)/);
     if (!match) return [];
@@ -243,13 +226,10 @@ module.exports = function (client) {
     const msgData = await res.json();
     return msgData.attachments || [];
   }
-
-  // ===== helper: สร้างห้อง public + ส่งสรุป + ปุ่มปิดห้อง + อัปเดต Firestore =====
   async function sendAuctionSummary(guild, doc, parentId) {
     const data = doc.data();
     let summary = data.summary || "⚠️ ไม่มีสรุป";
 
-    // แทนที่ "## วันที่ : รอคิวก่อน" ด้วยวันพรุ่งนี้ (ให้ดูเป็นวันเปิด)
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
     const formattedDate = tomorrow.toLocaleDateString("th-TH", {
@@ -261,8 +241,6 @@ module.exports = function (client) {
       "## วันที่ : รอคิวก่อน",
       `## วันที่ : ${formattedDate}`
     );
-
-    // แนบรูปจาก permaLink ถ้ามี
     const imageFiles = [];
     if (data.permaLink) {
       const attachments = await getAttachmentsFromPermaLink(data.permaLink);
@@ -280,7 +258,7 @@ module.exports = function (client) {
     const channelName = data.roomName || `ครั้งที่-${doc.id}`;
     const publicChannel = await guild.channels.create({
       name: channelName,
-      type: 0, // GuildText
+      type: 0,
       parent: parentId,
       permissionOverwrites: [
         {
@@ -288,7 +266,7 @@ module.exports = function (client) {
           allow: [
             PermissionsBitField.Flags.ViewChannel,
             PermissionsBitField.Flags.ReadMessageHistory,
-          ],
+          ]
         },
         {
           id: client.user.id,
@@ -445,8 +423,6 @@ module.exports = function (client) {
         const receptionChannel = guild.channels.cache.get(receptionChannelId);
         const bidChannel = guild.channels.cache.get(bidChannelId);
         if (!receptionChannel || !bidChannel) continue;
-
-        // --- ตัด suffix "-ล่าสุด-<ราคา>" ออกจากชื่อห้องสำหรับล็อกประวัติ ---
         const cleanName =
           (typeof parseBaseRoomName === "function" && parseBaseRoomName(bidChannel.name)) ||
           String(bidChannel.name).replace(/-ล่าสุด-[\d.]+$/, "");
@@ -467,8 +443,6 @@ module.exports = function (client) {
             SendMessages: true,
             ReadMessageHistory: true,
           });
-
-          // ✅ ใส่ embed ช่องทางชำระเงิน
           await receptionChannel.send({
             content:
               `# การประมูลได้จบลงไปแล้ว \n` +
@@ -519,7 +493,7 @@ module.exports = function (client) {
     );
 
     const jobOpen = schedule.scheduleJob(
-      { rule: "0 19 * * 1,2,3,4,5,6,7", tz: "Asia/Bangkok" },
+      { rule: "7 19 * * 1,2,3,4,5,6,7", tz: "Asia/Bangkok" },
       async () => {
         try {
           const guild = client.guilds.cache.first();
@@ -562,7 +536,7 @@ module.exports = function (client) {
             .sort((a, b) => a.count - b.count)
             .map((x) => x.doc);
 
-          const toOpen = docsSorted.slice(0, 10); // เปิด 5 ห้อง
+          const toOpen = docsSorted.slice(0, 10);
           if (toOpen.length === 0) {
             console.log("ℹ️ ไม่พบ roomName ตามรูปแบบ 'ครั้งที่-<เลข>'");
             return;
@@ -1025,12 +999,7 @@ module.exports = function (client) {
         }
         return;
       }
-
-      // --------------------------------------------
-      // Modal submit: auction_change_modal:<cid>:<mid?>
-      // --------------------------------------------
       if (interaction.isModalSubmit && interaction.isModalSubmit() && interaction.customId.startsWith("auction_change_modal:")) {
-        // ✅ เช็คสิทธิ์แอดมิน
         if (!interaction.memberPermissions?.has(PermissionsBitField.Flags.Administrator)) {
           await interaction.reply({ content: "❌ เฉพาะแอดมินเท่านั้น", ephemeral: true });
           return;
@@ -1074,8 +1043,6 @@ module.exports = function (client) {
         }
 
         const displayName = member.displayName || member.user.username || "Unknown";
-
-        // บันทึก bids
         const docRef = bidsRef.doc(channelId);
         await docRef.set(
           {
@@ -1087,11 +1054,7 @@ module.exports = function (client) {
           },
           { merge: true }
         );
-
-        // แจ้งราคาล่าสุด
         await bidChannel.send(`# ราคาล่าสุด คือ ${amount}\n## <@${userId}>\n**ปรับโดยแอดมิน**`);
-
-        // ตั้ง timeout แจ้งเตือน “ราคาล่าสุด”
         if (bidTimeouts.has(channelId)) {
           clearTimeout(bidTimeouts.get(channelId));
         }
@@ -1102,8 +1065,6 @@ module.exports = function (client) {
           }
         }, 5 * 60 * 1000);
         bidTimeouts.set(channelId, timeout);
-
-        // ถ้า modal มาจากปุ่ม/ข้อความเดิม ให้ลบข้อความนั้น (กรณีเก่า — เผื่อยังมีหลงเหลือ)
         if (hostMsgId) {
           const hostMsg = await bidChannel.messages.fetch(hostMsgId).catch(() => null);
           if (hostMsg) await hostMsg.delete().catch(() => {});
@@ -1115,9 +1076,6 @@ module.exports = function (client) {
         });
         return;
       }
-
-      // (ถ้ามี interactions ประเภทอื่น เพิ่มต่อได้ที่นี่)
-
     } catch (err) {
       console.error("InteractionCreate error:", err);
       try {
