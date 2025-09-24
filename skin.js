@@ -15,8 +15,14 @@ const { db } = require("./firebase");
 module.exports = function (client) {
   const PREFIX = "!";
   const STAFF_ROLE_ID = "1374387525040214016";
-  const CATEGORY_ID = "1374396536951406683";
+  const CATEGORY_ID = "1374396536951406683"; // หมวดหมู่ห้องตั๋วสกิน
   const FORM_CHANNEL_ID = "1374427289948786759";
+
+  // ✅ ห้องที่ต้องตรวจและโพสต์เมนูอัตโนมัติ
+  const SKIN_MENU_CHANNEL_ID = "1399272990914514964";
+
+  // ✅ เกณฑ์คิวที่ถือว่า "ปิดรับ"
+  const QUEUE_CLOSE_THRESHOLD = 8;
 
   const OWNER_IDS = {
     skin_hi: "1134464935448023152",
@@ -34,6 +40,26 @@ module.exports = function (client) {
     skin_nj: "ลายเส้น NJ",
   };
 
+  // ✅ ใช้สำหรับโชว์บรรทัดคิว (ชื่อย่อสั้น ๆ ด้านหน้า)
+  const QUEUE_PREFIX = {
+    skin_hi: "คิวคุณฮิเคริ",
+    skin_sky: "คิวคุณสกาย",
+    skin_muy: "คิวคุณมุย",
+    skin_kim: "คิวคุณขิม",
+    skin_nj: "คิวคุณNJ",
+  };
+
+  // ✅ ชื่อห้องฐานต่อศิลปิน (ใช้เท่าที่ระบบสร้างอยู่แล้ว)
+  const ARTISTS = [
+    { id: "skin_hi", channelName: "สกินคุณฮิเคริ" },
+    { id: "skin_sky", channelName: "สกินคุณสกาย" },
+    { id: "skin_muy", channelName: "สกินมุยคุง" },
+    { id: "skin_kim", channelName: "สกินคุณขิม" },
+    { id: "skin_nj", channelName: "สกินคุณ NJ" },
+  ];
+
+  const MENU_TITLE = "กดตั๋วเพื่อสั่งสกิน";
+
   const argToCustomId = (raw) => {
     if (!raw) return null;
     const key = String(raw).toLowerCase();
@@ -49,42 +75,134 @@ module.exports = function (client) {
     member?.permissions?.has(PermissionsBitField.Flags.Administrator) ||
     member?.roles?.cache?.has(STAFF_ROLE_ID);
 
-  // ===== Commands =====
+  // ---------- Helper: สร้างข้อความคิวจากจำนวนห้อง ----------
+  function formatQueueLine(artistId, count) {
+    const head = QUEUE_PREFIX[artistId] || "คิว";
+    if (count === 0) return `${head} ว่างมากกก`;
+    if (count >= QUEUE_CLOSE_THRESHOLD) return `${head} ปิดรับแบ้ววว`;
+    return `${head} ${count} คิว`;
+  }
+
+  // ---------- Helper: นับคิวทุกศิลปินใน GUILD ----------
+  async function computeQueueText(guild) {
+    try {
+      // fetch เพื่อรีเฟรชแคชให้ครบ ๆ
+      await guild.channels.fetch();
+
+      const lines = [];
+      for (const a of ARTISTS) {
+        const cnt = guild.channels.cache.filter(
+          (ch) => ch?.parentId === CATEGORY_ID && ch?.name === a.channelName
+        ).size;
+        lines.push(formatQueueLine(a.id, cnt));
+      }
+      return lines.join("\n");
+    } catch (e) {
+      console.error("computeQueueText error:", e);
+      return "(โหลดคิวไม่สำเร็จ)";
+    }
+  }
+
+  // ---------- Helper: สร้างเมนูโพสต์สกิน ----------
+  async function buildMenuEmbed(guild) {
+    const queueText = await computeQueueText(guild);
+    return new EmbedBuilder()
+      .setTitle(MENU_TITLE)
+      .setDescription(`**ห้ามกดเล่น\n\n${queueText}**`)
+      .setColor(0x9b59b6)
+      .setImage("https://media.tenor.com/S4MdyoCR3scAAAAM/oblakao.gif")
+      .setFooter({ text: "Make by Purple Shop" });
+  }
+
+  async function buildMenuRow() {
+    return new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId("skin_hi").setLabel(LABELS.skin_hi).setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId("skin_sky").setLabel(LABELS.skin_sky).setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId("skin_muy").setLabel(LABELS.skin_muy).setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId("skin_kim").setLabel(LABELS.skin_kim).setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId("skin_nj").setLabel(LABELS.skin_nj).setStyle(ButtonStyle.Primary)
+    );
+  }
+
+  async function postSkinMenu(channel) {
+    await channel.send({
+      content: `# ดูลายเส้นแต่ละคนได้ที่\n## <#1374409545836925008>`,
+    });
+    const embed = await buildMenuEmbed(channel.guild);
+    const row = await buildMenuRow();
+    const msg = await channel.send({ embeds: [embed], components: [row] });
+    return msg;
+  }
+
+  // ---------- Helper: หา message เมนูล่าสุด ----------
+  async function findExistingMenuMessage(channel) {
+    const recent = await channel.messages.fetch({ limit: 100 }).catch(() => null);
+    if (!recent) return null;
+    const existing = recent.find((m) => {
+      if (m.author?.id !== client.user.id) return false;
+      if (!m.embeds?.length) return false;
+      if (!m.components?.length) return false;
+      const title = m.embeds[0]?.title || "";
+      return title === MENU_TITLE;
+    });
+    return existing || null;
+  }
+
+  // ---------- ตรวจ/อัปเดตเมนูอัตโนมัติ ----------
+  async function ensureOrRefreshSkinMenu() {
+    try {
+      for (const [, guild] of client.guilds.cache) {
+        const channel =
+          guild.channels.cache.get(SKIN_MENU_CHANNEL_ID) ||
+          (await guild.channels.fetch(SKIN_MENU_CHANNEL_ID).catch(() => null));
+        if (!channel || !channel.isTextBased?.()) continue;
+
+        const existing = await findExistingMenuMessage(channel);
+
+        if (!existing) {
+          await postSkinMenu(channel);
+        } else {
+          // ✅ รีเฟรชบรรทัดคิวใน embed เดิม
+          const newEmbed = await buildMenuEmbed(guild);
+          const prevComponents = existing.components; // คงปุ่มเดิม
+          await existing.edit({ embeds: [newEmbed], components: prevComponents }).catch(() => {});
+        }
+      }
+    } catch (e) {
+      console.error("ensureOrRefreshSkinMenu error:", e);
+    }
+  }
+
+  // ---------- lifecycle ----------
+  client.once("ready", async () => {
+    await ensureOrRefreshSkinMenu();
+    setInterval(() => {
+      ensureOrRefreshSkinMenu();
+    }, 10 * 60 * 1000); // ทุก 10 นาที
+  });
+
+  // ถ้าโพสต์เมนูของบอทถูกลบ: โพสต์คืน + คิวล่าสุด
+  client.on("messageDelete", async (message) => {
+    try {
+      if (message.channelId !== SKIN_MENU_CHANNEL_ID) return;
+      if (message.author?.id !== client.user.id) return;
+      const title = message.embeds?.[0]?.title || "";
+      if (title === MENU_TITLE) {
+        const channel = message.channel;
+        setTimeout(() => postSkinMenu(channel).catch(() => {}), 1000);
+      }
+    } catch (e) {
+      console.error("messageDelete handler error:", e);
+    }
+  });
+
+  // ===== Commands: ปรับปุ่มแสดง/ซ่อนรายศิลปิน =====
   client.on("messageCreate", async (message) => {
     if (message.author.bot) return;
     if (!message.content.startsWith(PREFIX)) return;
 
     const args = message.content.slice(PREFIX.length).trim().split(/ +/);
     const command = args.shift().toLowerCase();
-
-    // โพสต์เมนูปุ่มเลือกช่างวาด
-    if (command === "skin") {
-      if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-        return message.reply("❌ เฉพาะแอดมินเท่านั้นที่ใช้คำสั่งนี้ได้");
-      }
-
-      await message.channel.send({
-        content: `# ดูลายเส้นแต่ละคนได้ที่\n## <#1374409545836925008>`,
-      });
-
-      const embed = new EmbedBuilder()
-        .setTitle("กดตั๋วเพื่อสั่งสกิน")
-        .setDescription("ห้ามกดเล่น")
-        .setColor(0x9b59b6)
-        .setImage("https://media.tenor.com/S4MdyoCR3scAAAAM/oblakao.gif")
-        .setFooter({ text: "Make by Purple Shop" });
-
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId("skin_hi").setLabel(LABELS.skin_hi).setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId("skin_sky").setLabel(LABELS.skin_sky).setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId("skin_muy").setLabel(LABELS.skin_muy).setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId("skin_kim").setLabel(LABELS.skin_kim).setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId("skin_nj").setLabel(LABELS.skin_nj).setStyle(ButtonStyle.Primary)
-      );
-
-      await message.channel.send({ embeds: [embed], components: [row] });
-      await message.delete().catch(() => {});
-    }
 
     // ปิดปุ่มบางคน: !closeskin <hi|sky|muy|kim|nj>
     if (command === "closeskin") {
@@ -98,20 +216,20 @@ module.exports = function (client) {
         return;
       }
 
-      const recentMessages = await message.channel.messages.fetch({ limit: 20 });
-      const botMessage = recentMessages.find(
-        (msg) => msg.author.id === client.user.id && msg.components.length > 0
-      );
+      const channel =
+        message.channel.id === SKIN_MENU_CHANNEL_ID
+          ? message.channel
+          : await message.guild.channels.fetch(SKIN_MENU_CHANNEL_ID).catch(() => null);
+      if (!channel) return message.delete().catch(() => {});
 
+      const botMessage = await findExistingMenuMessage(channel);
       if (botMessage) {
         const currentRow = botMessage.components[0];
         const newButtons = currentRow.components.filter((btn) => btn.customId !== customIdToRemove);
-        if (newButtons.length > 0) {
-          const newRow = new ActionRowBuilder().addComponents(newButtons);
-          await botMessage.edit({ components: [newRow] });
-        } else {
-          await botMessage.edit({ components: [] });
-        }
+        await botMessage.edit({ components: newButtons.length ? [new ActionRowBuilder().addComponents(newButtons)] : [] }).catch(() => {});
+        // อัปเดตบรรทัดคิวด้วย
+        const newEmbed = await buildMenuEmbed(channel.guild);
+        await botMessage.edit({ embeds: [newEmbed] }).catch(() => {});
       }
       await message.delete().catch(() => {});
     }
@@ -128,26 +246,29 @@ module.exports = function (client) {
         return;
       }
 
-      const recentMessages = await message.channel.messages.fetch({ limit: 20 });
-      const botMessage = recentMessages.find(
-        (msg) => msg.author.id === client.user.id && msg.components.length > 0
-      );
+      const channel =
+        message.channel.id === SKIN_MENU_CHANNEL_ID
+          ? message.channel
+          : await message.guild.channels.fetch(SKIN_MENU_CHANNEL_ID).catch(() => null);
+      if (!channel) return message.delete().catch(() => {});
 
+      const botMessage = await findExistingMenuMessage(channel);
       if (botMessage) {
         const currentRow = botMessage.components[0];
         const exists = currentRow.components.some((btn) => btn.customId === customIdToAdd);
-
         if (!exists) {
           if (currentRow.components.length < 5) {
             const newButton = new ButtonBuilder()
               .setCustomId(customIdToAdd)
               .setLabel(LABELS[customIdToAdd] || "ลายเส้น")
               .setStyle(ButtonStyle.Primary);
-
             const newRow = new ActionRowBuilder().addComponents([...currentRow.components, newButton]);
-            await botMessage.edit({ components: [newRow] });
+            await botMessage.edit({ components: [newRow] }).catch(() => {});
           }
         }
+        // อัปเดตบรรทัดคิวด้วย
+        const newEmbed = await buildMenuEmbed(channel.guild);
+        await botMessage.edit({ embeds: [newEmbed] }).catch(() => {});
       }
       await message.delete().catch(() => {});
     }
@@ -220,7 +341,7 @@ module.exports = function (client) {
       // สร้างห้อง
       const channel = await guild.channels.create({
         name: channelName,
-        type: 0,
+        type: 0, // GuildText
         parent: CATEGORY_ID,
         permissionOverwrites: [
           { id: guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
@@ -250,6 +371,21 @@ module.exports = function (client) {
       await interaction.editReply({
         content: `✅ เปิดตั๋วสกินลายเส้น ${skinName} แล้ว: ${channel}`,
       });
+
+      // หลังเปิดตั๋ว อัปเดตบรรทัดคิวในหน้าเมนูด้วย
+      try {
+        const menuChannel =
+          guild.channels.cache.get(SKIN_MENU_CHANNEL_ID) ||
+          (await guild.channels.fetch(SKIN_MENU_CHANNEL_ID).catch(() => null));
+        if (menuChannel?.isTextBased?.()) {
+          const menuMsg = await findExistingMenuMessage(menuChannel);
+          if (menuMsg) {
+            const newEmbed = await buildMenuEmbed(guild);
+            await menuMsg.edit({ embeds: [newEmbed] }).catch(() => {});
+          }
+        }
+      } catch {}
+
       return;
     }
 
@@ -268,8 +404,24 @@ module.exports = function (client) {
         flags: MessageFlags.Ephemeral,
       });
 
-      setTimeout(() => {
-        interaction.channel?.delete().catch(console.error);
+      setTimeout(async () => {
+        const g = interaction.guild;
+        const ch = interaction.channel;
+        await ch?.delete().catch(console.error);
+
+        // หลังลบ อัปเดตบรรทัดคิวหน้าเมนู
+        try {
+          const menuChannel =
+            g.channels.cache.get(SKIN_MENU_CHANNEL_ID) ||
+            (await g.channels.fetch(SKIN_MENU_CHANNEL_ID).catch(() => null));
+          if (menuChannel?.isTextBased?.()) {
+            const menuMsg = await findExistingMenuMessage(menuChannel);
+            if (menuMsg) {
+              const newEmbed = await buildMenuEmbed(g);
+              await menuMsg.edit({ embeds: [newEmbed] }).catch(() => {});
+            }
+          }
+        } catch {}
       }, 250);
 
       return;
