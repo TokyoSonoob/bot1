@@ -1,7 +1,4 @@
 const {
-  Client,
-  GatewayIntentBits,
-  Partials,
   EmbedBuilder,
   ButtonBuilder,
   ButtonStyle,
@@ -9,8 +6,9 @@ const {
   PermissionsBitField,
   MessageFlags, // ✅ ใช้ flags แทน ephemeral
 } = require("discord.js");
-const express = require("express");
-const { db } = require("./firebase");
+// ถ้ามี express/firebase ใช้ที่อื่นคงไว้ได้ แต่ในไฟล์นี้ไม่ได้ใช้จริง
+// const express = require("express");
+// const { db } = require("./firebase");
 
 module.exports = function (client) {
   const PREFIX = "!";
@@ -20,9 +18,6 @@ module.exports = function (client) {
 
   // ✅ ห้องที่ต้องตรวจและโพสต์เมนูอัตโนมัติ
   const SKIN_MENU_CHANNEL_ID = "1399272990914514964";
-
-  // ✅ เกณฑ์คิวที่ถือว่า "ปิดรับ"
-  const QUEUE_CLOSE_THRESHOLD = 8;
 
   const OWNER_IDS = {
     skin_hi: "1134464935448023152",
@@ -40,7 +35,6 @@ module.exports = function (client) {
     skin_nj: "ลายเส้น NJ",
   };
 
-  // ✅ ใช้สำหรับโชว์บรรทัดคิว (ชื่อย่อสั้น ๆ ด้านหน้า)
   const QUEUE_PREFIX = {
     skin_hi: "คิวคุณฮิเคริ",
     skin_sky: "คิวคุณสกาย",
@@ -49,13 +43,13 @@ module.exports = function (client) {
     skin_nj: "คิวคุณNJ",
   };
 
-  // ✅ ชื่อห้องฐานต่อศิลปิน (ใช้เท่าที่ระบบสร้างอยู่แล้ว)
+  // ✅ รายชื่อฐานห้องต่อศิลปิน (ใช้ normalize ตอนเทียบ เพื่อรองรับชื่อที่มี -กำลังทำ/-ตัดจ้า ฯลฯ)
   const ARTISTS = [
-    { id: "skin_hi", channelName: "สกินคุณฮิเคริ" },
-    { id: "skin_sky", channelName: "สกินคุณสกาย" },
-    { id: "skin_muy", channelName: "สกินมุยคุง" },
-    { id: "skin_kim", channelName: "สกินคุณขิม" },
-    { id: "skin_nj", channelName: "สกินคุณ NJ" },
+    { id: "skin_hi",  base: "สกินคุณฮิเคริ" },
+    { id: "skin_sky", base: "สกินคุณสกาย" },
+    { id: "skin_muy", base: "สกินมุยคุง" },
+    { id: "skin_kim", base: "สกินคุณขิม" },
+    { id: "skin_nj",  base: "สกินคุณ nj" }, // รองรับ NJ ทุกแบบด้วย normalize
   ];
 
   const MENU_TITLE = "กดตั๋วเพื่อสั่งสกิน";
@@ -75,26 +69,78 @@ module.exports = function (client) {
     member?.permissions?.has(PermissionsBitField.Flags.Administrator) ||
     member?.roles?.cache?.has(STAFF_ROLE_ID);
 
-  // ---------- Helper: สร้างข้อความคิวจากจำนวนห้อง ----------
-  function formatQueueLine(artistId, count) {
-    const head = QUEUE_PREFIX[artistId] || "คิว";
-    if (count === 0) return `${head} ว่างมากกก`;
-    if (count >= QUEUE_CLOSE_THRESHOLD) return `${head} ปิดรับแบ้ววว`;
-    return `${head} ${count} คิว`;
+  // ===== helper: ตอบแบบ ephemeral ให้ปลอดภัย ไม่ซ้ำ ack =====
+  async function safeEphemeral(interaction, payload) {
+    const data = { flags: MessageFlags.Ephemeral, ...payload };
+    try {
+      if (interaction.deferred) {
+        return await interaction.editReply(data);
+      }
+      if (interaction.replied) {
+        return await interaction.followUp(data);
+      }
+      return await interaction.reply(data);
+    } catch (e) {
+      if (e?.code === 40060) {
+        try { return await interaction.followUp(data); } catch {}
+      }
+      throw e;
+    }
   }
 
-  // ---------- Helper: นับคิวทุกศิลปินใน GUILD ----------
+  // ---------- Normalize ชื่อห้อง ----------
+  const norm = (s) => (s || "").replace(/[\s\-]+/g, "").toLowerCase();
+
+  // ---------- สร้างข้อความคิว (ไม่ตัดสินใจปิดจากจำนวน แต่ดูว่าปุ่มเปิดอยู่ไหม) ----------
+  function formatQueueLineOpen(artistId, count) {
+    const head = QUEUE_PREFIX[artistId] || "คิว";
+    if (count === 0) return `${head} ว่างมากกก`;
+    return `${head} ${count} คิว`;
+  }
+  function formatQueueLineClosed(artistId) {
+    const head = QUEUE_PREFIX[artistId] || "คิว";
+    return `${head} ปิดรับแบ้ววว`;
+  }
+
+  // ---------- หา message เมนูล่าสุด ----------
+  async function findExistingMenuMessage(channel) {
+    const recent = await channel.messages.fetch({ limit: 100 }).catch(() => null);
+    if (!recent) return null;
+    const existing = recent.find((m) => {
+      if (m.author?.id !== client.user.id) return false;
+      if (!m.embeds?.length) return false;
+      const title = m.embeds[0]?.title || "";
+      return title === MENU_TITLE;
+    });
+    return existing || null;
+  }
+
+  // ---------- นับคิว + ตัดสินใจเปิด/ปิดจากปุ่ม ----------
   async function computeQueueText(guild) {
     try {
-      // fetch เพื่อรีเฟรชแคชให้ครบ ๆ
-      await guild.channels.fetch();
+      await guild.channels.fetch(); // refresh cache
+
+      const menuChannel =
+        guild.channels.cache.get(SKIN_MENU_CHANNEL_ID) ||
+        (await guild.channels.fetch(SKIN_MENU_CHANNEL_ID).catch(() => null));
+
+      const menuMsg = menuChannel ? await findExistingMenuMessage(menuChannel) : null;
+      const components = menuMsg?.components?.[0]?.components ?? [];
 
       const lines = [];
       for (const a of ARTISTS) {
-        const cnt = guild.channels.cache.filter(
-          (ch) => ch?.parentId === CATEGORY_ID && ch?.name === a.channelName
-        ).size;
-        lines.push(formatQueueLine(a.id, cnt));
+        const baseNorm = norm(a.base);
+
+        // นับจำนวนห้องที่ขึ้นต้นด้วย base
+        const cnt = guild.channels.cache.filter((ch) => {
+          if (!ch || ch.parentId !== CATEGORY_ID) return false;
+          return norm(ch.name).startsWith(baseNorm);
+        }).size;
+
+        // ปุ่มยังอยู่ไหม? (เปิดอยู่ = โชว์คิว, ไม่อยู่ = ปิดรับ)
+        const btnOpen = components.some((btn) => btn.customId === a.id);
+
+        lines.push(btnOpen ? formatQueueLineOpen(a.id, cnt) : formatQueueLineClosed(a.id));
       }
       return lines.join("\n");
     } catch (e) {
@@ -103,7 +149,7 @@ module.exports = function (client) {
     }
   }
 
-  // ---------- Helper: สร้างเมนูโพสต์สกิน ----------
+  // ---------- สร้าง Embed เมนู ----------
   async function buildMenuEmbed(guild) {
     const queueText = await computeQueueText(guild);
     return new EmbedBuilder()
@@ -119,7 +165,7 @@ module.exports = function (client) {
       new ButtonBuilder().setCustomId("skin_hi").setLabel(LABELS.skin_hi).setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId("skin_sky").setLabel(LABELS.skin_sky).setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId("skin_muy").setLabel(LABELS.skin_muy).setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId("skin_kim").setLabel(LABELS.skin_kim).setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId("skin_kim").setLabel(LABELS.skin_kิม).setStyle(ButtonStyle.Primary), // 👈 ตรวจสะกด "ขิม" ให้ตรง LABELS
       new ButtonBuilder().setCustomId("skin_nj").setLabel(LABELS.skin_nj).setStyle(ButtonStyle.Primary)
     );
   }
@@ -130,22 +176,7 @@ module.exports = function (client) {
     });
     const embed = await buildMenuEmbed(channel.guild);
     const row = await buildMenuRow();
-    const msg = await channel.send({ embeds: [embed], components: [row] });
-    return msg;
-  }
-
-  // ---------- Helper: หา message เมนูล่าสุด ----------
-  async function findExistingMenuMessage(channel) {
-    const recent = await channel.messages.fetch({ limit: 100 }).catch(() => null);
-    if (!recent) return null;
-    const existing = recent.find((m) => {
-      if (m.author?.id !== client.user.id) return false;
-      if (!m.embeds?.length) return false;
-      if (!m.components?.length) return false;
-      const title = m.embeds[0]?.title || "";
-      return title === MENU_TITLE;
-    });
-    return existing || null;
+    return channel.send({ embeds: [embed], components: [row] });
   }
 
   // ---------- ตรวจ/อัปเดตเมนูอัตโนมัติ ----------
@@ -158,14 +189,11 @@ module.exports = function (client) {
         if (!channel || !channel.isTextBased?.()) continue;
 
         const existing = await findExistingMenuMessage(channel);
-
         if (!existing) {
           await postSkinMenu(channel);
         } else {
-          // ✅ รีเฟรชบรรทัดคิวใน embed เดิม
           const newEmbed = await buildMenuEmbed(guild);
-          const prevComponents = existing.components; // คงปุ่มเดิม
-          await existing.edit({ embeds: [newEmbed], components: prevComponents }).catch(() => {});
+          await existing.edit({ embeds: [newEmbed], components: existing.components }).catch(() => {});
         }
       }
     } catch (e) {
@@ -176,9 +204,7 @@ module.exports = function (client) {
   // ---------- lifecycle ----------
   client.once("ready", async () => {
     await ensureOrRefreshSkinMenu();
-    setInterval(() => {
-      ensureOrRefreshSkinMenu();
-    }, 10 * 60 * 1000); // ทุก 10 นาที
+    setInterval(() => ensureOrRefreshSkinMenu(), 10 * 60 * 1000); // ทุก 10 นาที
   });
 
   // ถ้าโพสต์เมนูของบอทถูกลบ: โพสต์คืน + คิวล่าสุด
@@ -206,28 +232,25 @@ module.exports = function (client) {
 
     // ปิดปุ่มบางคน: !closeskin <hi|sky|muy|kim|nj>
     if (command === "closeskin") {
-      if (!isAdminOrStaff(message.member)) {
-        await message.delete().catch(() => {});
-        return;
-      }
+      if (!isAdminOrStaff(message.member)) return void message.delete().catch(() => {});
       const customIdToRemove = argToCustomId(args[0]);
-      if (!customIdToRemove) {
-        await message.delete().catch(() => {});
-        return;
-      }
+      if (!customIdToRemove) return void message.delete().catch(() => {});
 
       const channel =
         message.channel.id === SKIN_MENU_CHANNEL_ID
           ? message.channel
           : await message.guild.channels.fetch(SKIN_MENU_CHANNEL_ID).catch(() => null);
-      if (!channel) return message.delete().catch(() => {});
+      if (!channel) return void message.delete().catch(() => {});
 
       const botMessage = await findExistingMenuMessage(channel);
       if (botMessage) {
-        const currentRow = botMessage.components[0];
-        const newButtons = currentRow.components.filter((btn) => btn.customId !== customIdToRemove);
-        await botMessage.edit({ components: newButtons.length ? [new ActionRowBuilder().addComponents(newButtons)] : [] }).catch(() => {});
-        // อัปเดตบรรทัดคิวด้วย
+        const currentRow = botMessage.components?.[0];
+        const newButtons = (currentRow?.components || []).filter((btn) => btn.customId !== customIdToRemove);
+        await botMessage.edit({
+          components: newButtons.length ? [new ActionRowBuilder().addComponents(newButtons)] : [],
+        }).catch(() => {});
+
+        // รีเฟรชบรรทัดคิว
         const newEmbed = await buildMenuEmbed(channel.guild);
         await botMessage.edit({ embeds: [newEmbed] }).catch(() => {});
       }
@@ -236,37 +259,29 @@ module.exports = function (client) {
 
     // เปิดปุ่มด้วยชื่อย่อ: !openskin <hi|sky|muy|kim|nj>
     if (command === "openskin") {
-      if (!isAdminOrStaff(message.member)) {
-        await message.delete().catch(() => {});
-        return;
-      }
+      if (!isAdminOrStaff(message.member)) return void message.delete().catch(() => {});
       const customIdToAdd = argToCustomId(args[0]);
-      if (!customIdToAdd) {
-        await message.delete().catch(() => {});
-        return;
-      }
+      if (!customIdToAdd) return void message.delete().catch(() => {});
 
       const channel =
         message.channel.id === SKIN_MENU_CHANNEL_ID
           ? message.channel
           : await message.guild.channels.fetch(SKIN_MENU_CHANNEL_ID).catch(() => null);
-      if (!channel) return message.delete().catch(() => {});
+      if (!channel) return void message.delete().catch(() => {});
 
       const botMessage = await findExistingMenuMessage(channel);
       if (botMessage) {
-        const currentRow = botMessage.components[0];
-        const exists = currentRow.components.some((btn) => btn.customId === customIdToAdd);
+        const currentRow = botMessage.components?.[0];
+        const exists = (currentRow?.components || []).some((btn) => btn.customId === customIdToAdd);
         if (!exists) {
-          if (currentRow.components.length < 5) {
-            const newButton = new ButtonBuilder()
-              .setCustomId(customIdToAdd)
-              .setLabel(LABELS[customIdToAdd] || "ลายเส้น")
-              .setStyle(ButtonStyle.Primary);
-            const newRow = new ActionRowBuilder().addComponents([...currentRow.components, newButton]);
-            await botMessage.edit({ components: [newRow] }).catch(() => {});
-          }
+          const newButton = new ButtonBuilder()
+            .setCustomId(customIdToAdd)
+            .setLabel(LABELS[customIdToAdd] || "ลายเส้น")
+            .setStyle(ButtonStyle.Primary);
+          const newRow = new ActionRowBuilder().addComponents([...(currentRow?.components || []), newButton]);
+          await botMessage.edit({ components: [newRow] }).catch(() => {});
         }
-        // อัปเดตบรรทัดคิวด้วย
+        // รีเฟรชบรรทัดคิว
         const newEmbed = await buildMenuEmbed(channel.guild);
         await botMessage.edit({ embeds: [newEmbed] }).catch(() => {});
       }
@@ -323,11 +338,11 @@ module.exports = function (client) {
           break;
       }
 
-      // จำกัดไม่เกิน 3 ห้อง/คน/ลายเส้น
+      // จำกัดไม่เกิน 3 ห้อง/คน/ลายเส้น (นับแบบขึ้นต้นด้วย channelName)
       const userChannels = guild.channels.cache.filter(
         (ch) =>
           ch.parentId === CATEGORY_ID &&
-          ch.name === channelName &&
+          ch.name && ch.name.startsWith(channelName) &&
           ch.permissionsFor(user.id)?.has(PermissionsBitField.Flags.ViewChannel)
       );
 
@@ -372,7 +387,7 @@ module.exports = function (client) {
         content: `✅ เปิดตั๋วสกินลายเส้น ${skinName} แล้ว: ${channel}`,
       });
 
-      // หลังเปิดตั๋ว อัปเดตบรรทัดคิวในหน้าเมนูด้วย
+      // หลังเปิดตั๋ว อัปเดตคิวหน้าเมนู
       try {
         const menuChannel =
           guild.channels.cache.get(SKIN_MENU_CHANNEL_ID) ||
@@ -380,8 +395,8 @@ module.exports = function (client) {
         if (menuChannel?.isTextBased?.()) {
           const menuMsg = await findExistingMenuMessage(menuChannel);
           if (menuMsg) {
-            const newEmbed = await buildMenuEmbed(guild);
-            await menuMsg.edit({ embeds: [newEmbed] }).catch(() => {});
+            const newEmbed2 = await buildMenuEmbed(guild);
+            await menuMsg.edit({ embeds: [newEmbed2] }).catch(() => {});
           }
         }
       } catch {}
@@ -392,17 +407,12 @@ module.exports = function (client) {
     // ลบตั๋ว
     if (interaction.customId === "delete_ticket") {
       if (!isAdminOrStaff(member)) {
-        return interaction.reply({
+        return safeEphemeral(interaction, {
           content: "❌ คุณไม่มีสิทธิ์ลบตั๋วนี้ (เฉพาะแอดมินหรือสตาฟเท่านั้น)",
-          flags: MessageFlags.Ephemeral, // ✅ ใช้ flags
         });
       }
 
-      // ✅ ตอบก่อน แล้วค่อยลบห้องกัน 10062
-      await interaction.reply({
-        content: "🗑️ กำลังลบตั๋ว...",
-        flags: MessageFlags.Ephemeral,
-      });
+      await safeEphemeral(interaction, { content: "🗑️ กำลังลบตั๋ว..." });
 
       setTimeout(async () => {
         const g = interaction.guild;
