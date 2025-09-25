@@ -53,7 +53,7 @@ require("./everyone")(client);
 require("./dis")(client);
 require("./ban")(client);
 require("./test")(client);
-
+require("./q")(client);
 
 // ===== Dynamic Backoffice Chain =====
 const BACKOFFICE_ROOT_NAME  = "หลังบ้านประมูล"; // หมวดหลักตัวแรก (ของเดิมคุณ)
@@ -1024,5 +1024,6 @@ if (interaction.customId === "fill_info") {
 }
 });
 client.login(process.env.token);
+
 
 
