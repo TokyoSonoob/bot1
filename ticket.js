@@ -1,4 +1,4 @@
-// ticket.js (discord.js v14)
+// ticket.js (discord.js v14) — fixed parent category validation
 const {
   EmbedBuilder,
   ActionRowBuilder,
@@ -36,8 +36,7 @@ const PAY_IMAGE_URL  = "https://drive.google.com/uc?export=download&id=1DDmlbAXd
 
 const ADDON_BASE_PRICE = 30; // เฉพาะโหมด standard
 
-// ====== LABELS / PRICES ======
-// ลบ eye_blink_new ออก และตั้ง eye_blink = 35
+// ===== labels/prices (ลบ eye_blink_new และตั้ง eye_blink = 35) =====
 const labels = {
   hair_move: "ผมขยับ",
   long_hair_move: "ผมขยับยาว",
@@ -52,7 +51,7 @@ const labels = {
 const prices = {
   hair_move: 30,
   long_hair_move: 70,
-  eye_blink: 35,   // เปลี่ยนเป็น 35
+  eye_blink: 35, // เปลี่ยนเป็น 35
   boobs: 25,
   glow_eye: 35,
   eye_move: 100,
@@ -91,7 +90,7 @@ function createFormButton() {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId("open_form")
-      .setLabel('กรอกข้อมูลเพิ่ม!! กดตรงนี้ กดดดดดดดด')
+      .setLabel("กรอกข้อมูลเพิ่ม!! กดตรงนี้ กดดดดดดดด")
       .setStyle(ButtonStyle.Success)
   );
 }
@@ -250,6 +249,20 @@ async function deleteBuffPrompt(k) {
   buffPromptMsg.delete(k);
 }
 
+// ===== helper: ตรวจหมวดหมู่ก่อนใช้งานเป็น parent =====
+async function fetchValidCategory(guild, categoryId) {
+  // ต้องเป็นสโนว์เฟลค
+  if (!/^\d{17,20}$/.test(String(categoryId || ""))) return { ok: false, reason: "รูปแบบหมวดหมู่ไม่ถูกต้อง" };
+  // หาในแคชก่อน
+  let cat = guild.channels.cache.get(categoryId);
+  if (!cat) {
+    cat = await guild.channels.fetch(categoryId).catch(() => null);
+  }
+  if (!cat) return { ok: false, reason: "ไม่พบหมวดหมู่ในเซิร์ฟเวอร์นี้" };
+  if (cat.type !== ChannelType.GuildCategory) return { ok: false, reason: "ID ที่ระบุไม่ใช่หมวดหมู่ (Category)" };
+  return { ok: true, cat };
+}
+
 // ==== MAIN MODULE ====
 module.exports = function (client) {
   // ตั้งค่า !ticket (เก็บ category สำหรับโหมดทั่วไป)
@@ -261,14 +274,23 @@ module.exports = function (client) {
       const args = message.content.trim().split(/\s+/);
       const categoryId = args[1];
       if (!categoryId) {
-        return message.reply("❌ กรุณาระบุรหัสหมวดหมู่ เช่น `!ticket 123456789`");
+        return message.reply("❌ กรุณาระบุรหัสหมวดหมู่ เช่น `!ticket 123456789012345678`");
       }
       const guildId = message.guild.id;
       await db.doc(`ticket_settings/${guildId}`).set({ categoryId });
 
       const embed = new EmbedBuilder()
-        .setTitle("สั่งงานแอดออนสกิน")
-        .setDescription("**แอดออนสกินดูเรทราคาได้ที่ <#1418840494108180602>\nรวมแอดออนสกิน สกินละ10บาทสนใจกดตั๋วเลย\nจ่ายเงินครบก่อนถึงจะเริ่มงานนะคับ\nงานจะเสร็จภายใน 1-3 วันน้าาา**")
+        .setDescription(
+    "# สั่งงานแอดออน \n# โมเดล ฟิกุร่า\n"+
+    "     **✩.･*:｡≻───── ⋆♡⋆ ─────.•*:｡✩\n\n" +
+    "# <a:excited_kawaii_roach:1421742948630134855> ตั๋วสั่งแอดออน <a:Catpls:1421734047381721141>\n" +
+    " <a:emoji_5:1421733862601654374> [แอดออนสกินดูเรทราคาได้ที่นี่เลอ](https://discordapp.com/channels/1336555551970164839/1418840494108180602)\n" +
+    " <a:emoji_5:1421733862601654374> รวมแอดออนสกิน \n        สกินละ10บาทสนใจกดตั๋วเลย\n" +
+    " <a:emoji_5:1421733862601654374> จ่ายเงินครบก่อนถึงจะเริ่มงานนะคับ\n" +
+    " <a:emoji_5:1421733862601654374> งานจะเสร็จภายใน 1-3 วันน้าาา\n\n" +
+    "            :exclamation::exclamation:ห้ามกดตั๋วเล่น:exclamation::exclamation:\n" +
+    "               ─── ･ ｡ﾟ☆: *.☽ .* :☆ﾟ. ───**"
+  )
         .setColor(0x9b59b6)
         .setImage("https://giffiles.alphacoders.com/220/220120.gif")
         .setFooter({ text: "Make by Purple Shop" });
@@ -307,27 +329,35 @@ module.exports = function (client) {
     try {
       const guildId = interaction.guild.id;
       const settingsDoc = await db.doc(`ticket_settings/${guildId}`).get();
-      const parentCategoryId = (mode === "sculpt" || mode === "figura")
-        ? MODEL_CATEGORY_ID
-        : (settingsDoc.exists && settingsDoc.data().categoryId) ? settingsDoc.data().categoryId : null;
 
+      // เลือกหมวดหมู่ตามโหมด
+      const parentCategoryId =
+        (mode === "sculpt" || mode === "figura")
+          ? MODEL_CATEGORY_ID
+          : (settingsDoc.exists && settingsDoc.data().categoryId) ? settingsDoc.data().categoryId : null;
+
+      await ensureDeferred(interaction, true);
+
+      // ตรวจว่ามีการตั้งค่าไหม
       if (!parentCategoryId) {
-        await ensureDeferred(interaction, true);
-        await interaction.editReply("❌ ยังไม่ได้ตั้งค่าหมวดหมู่สำหรับเซิร์ฟเวอร์นี้");
-        return null;
-      }
-      if (!/^\d{17,20}$/.test(parentCategoryId)) {
-        await ensureDeferred(interaction, true);
-        await interaction.editReply("❌ หมวดหมู่ที่ตั้งไว้ไม่ถูกต้อง (ไม่ใช่ Snowflake)");
+        await interaction.editReply("❌ ยังไม่ได้ตั้งค่าหมวดหมู่สำหรับเซิร์ฟเวอร์นี้ (พิมพ์ `!ticket <categoryId>` เพื่อตั้งค่า)");
         return null;
       }
 
-      const channelName = 
+      // ✅ ตรวจสอบหมวดหมู่มีอยู่จริงและเป็น Category
+      const check = await fetchValidCategory(interaction.guild, parentCategoryId);
+      if (!check.ok) {
+        await interaction.editReply(`❌ สร้างห้องไม่สำเร็จ: ${check.reason}\nกรุณาตั้งค่าใหม่ด้วยคำสั่ง \`!ticket <categoryId ของหมวดที่มีอยู่จริง>\``);
+        return null;
+      }
+      const parentCategory = check.cat;
+
+      const channelName =
         mode === "sculpt"
           ? `🔥-𝕄𝕠𝕕𝕖𝕝_${interaction.user.username}`
           : mode === "figura"
-            ? `🔥-𝔽𝕚𝕘𝕦𝕣𝕒_${interaction.user.username}`
-            : `🔥-𝕋𝕚𝕔𝕜𝕖𝕥_${interaction.user.username}`;
+          ? `🔥-𝔽𝕚𝕈𝕦𝕣𝕒_${interaction.user.username}`
+          : `🔥-𝕋𝕚𝕔𝕜𝕖𝕥_${interaction.user.username}`;
 
       // สร้าง overwrites และเพิ่มสิทธิ์ให้โรลโมเดลในโหมด sculpt/figura
       const overwrites = [
@@ -342,10 +372,11 @@ module.exports = function (client) {
         });
       }
 
+      // ✅ ใช้ parent: parentCategory.id ที่ตรวจแล้วว่าถูกต้อง
       const channel = await interaction.guild.channels.create({
         name: channelName,
         type: ChannelType.GuildText,
-        parent: parentCategoryId,
+        parent: parentCategory.id,
         permissionOverwrites: overwrites,
       });
 
@@ -430,7 +461,6 @@ module.exports = function (client) {
         await channel.send({ embeds: [embed], components: [row] });
       }
 
-      // sculpt: โพสต์ข้อความแนะนำอย่างเดียว
       if (mode === "sculpt") {
         const embed = new EmbedBuilder()
           .setTitle("สั่งงานปั้นโมเดล")
@@ -443,7 +473,6 @@ module.exports = function (client) {
         await channel.send({ embeds: [embed] });
       }
 
-      await ensureDeferred(interaction, true);
       await interaction.editReply(`✅ เปิดตั๋วให้แล้วที่ ${channel}`);
       return channel;
     } catch (err) {
@@ -460,7 +489,7 @@ module.exports = function (client) {
     try {
       // === ปุ่มหน้าตั้งค่า ===
       if (interaction.isButton()) {
-        // ปุ่มเปิดตั๋วทุกโหมด
+        // ปุ่มเปิดตั๋วทั้ง 5 โหมด
         if (
           interaction.customId === "create_ticket_standard" ||
           interaction.customId === "create_ticket_bundle" ||
@@ -570,7 +599,7 @@ module.exports = function (client) {
           return;
         }
 
-        // === ปุ่มเปิดโมดัลของรวมแอดออนสกิน ===
+        // === ปุ่มเปิดโมดัลของรวมแอดออนสกิน
         if (interaction.customId === "open_bundle_modal") {
           try {
             const modal = new ModalBuilder()
@@ -609,7 +638,7 @@ module.exports = function (client) {
             selected = selected.filter(v => v !== "hair_move");
           }
 
-          // face_change auto-include eye_move + eye_blink (แทน eye_blink_new ที่ถูกลบ)
+          // face_change auto-include eye_move + eye_blink (แทน eye_blink_new)
           if (selected.includes("face_change")) {
             if (!selected.includes("eye_move")) selected.push("eye_move");
             if (!selected.includes("eye_blink")) selected.push("eye_blink");
