@@ -23,7 +23,7 @@ const summaryMessages = new Map(); // key: `${userId}-${channelId}` -> last summ
 const formMessages = new Map();    // key: `${userId}-${channelId}` -> last form message
 const userTotals    = new Map();   // key: `${userId}-${channelId}` -> number (subtotal ยังไม่รวม base)
 const userDetails   = new Map();   // key: `${userId}-${channelId}` -> string[] รายการย่อย
-const ticketModes   = new Map();   // key: `${userId}-${channelId}` -> 'standard'|'bundle'|'preset'|'sculpt'
+const ticketModes   = new Map();   // key: `${userId}-${channelId}` -> 'standard'|'bundle'|'preset'|'sculpt'|'figura'
 const userSelections = new Map();  // key -> Set<string> (ค่าที่เลือกใน select_features)
 const dynamicState   = new Map();  // key -> { bangsQty:null|number, bangsBringOwn:boolean, buffQty:null|number, buffNotes:string }
 const bangsPromptMsg = new Map();  // key -> Message (ปอยผม)
@@ -36,11 +36,12 @@ const PAY_IMAGE_URL  = "https://drive.google.com/uc?export=download&id=1DDmlbAXd
 
 const ADDON_BASE_PRICE = 30; // เฉพาะโหมด standard
 
+// ====== LABELS / PRICES ======
+// ลบ eye_blink_new ออก และตั้ง eye_blink = 35
 const labels = {
   hair_move: "ผมขยับ",
   long_hair_move: "ผมขยับยาว",
   eye_blink: "ตากระพริบ",
-  eye_blink_new: "ตากระพริบใหม่",
   boobs: "หน้าอก",
   bangs: "ปอยผม",
   glow_eye: "ตาเรืองแสง",
@@ -51,8 +52,7 @@ const labels = {
 const prices = {
   hair_move: 30,
   long_hair_move: 70,
-  eye_blink: 25,
-  eye_blink_new: 35,
+  eye_blink: 35,   // เปลี่ยนเป็น 35
   boobs: 25,
   glow_eye: 35,
   eye_move: 100,
@@ -139,7 +139,7 @@ function computeTotal(k) {
   const dyn = ensureDyn(k);
   const mode = ticketModes.get(k) || "standard";
 
-  // bundle/preset/sculpt ใช้ subtotal ตรงๆ
+  // bundle/preset/sculpt/figura ใช้ subtotal ตรงๆ
   if (mode !== "standard") {
     return userTotals.get(k) || 0;
   }
@@ -308,8 +308,8 @@ module.exports = function (client) {
       const guildId = interaction.guild.id;
       const settingsDoc = await db.doc(`ticket_settings/${guildId}`).get();
       const parentCategoryId = (mode === "sculpt" || mode === "figura")
-  ? MODEL_CATEGORY_ID
-  : (settingsDoc.exists && settingsDoc.data().categoryId) ? settingsDoc.data().categoryId : null;
+        ? MODEL_CATEGORY_ID
+        : (settingsDoc.exists && settingsDoc.data().categoryId) ? settingsDoc.data().categoryId : null;
 
       if (!parentCategoryId) {
         await ensureDeferred(interaction, true);
@@ -323,24 +323,24 @@ module.exports = function (client) {
       }
 
       const channelName = 
-      mode === "sculpt"
+        mode === "sculpt"
           ? `🔥-𝕄𝕠𝕕𝕖𝕝_${interaction.user.username}`
           : mode === "figura"
-              ? `🔥-𝔽𝕚𝕘𝕦𝕣𝕒_${interaction.user.username}`
-              : `🔥-𝕋𝕚𝕔𝕜𝕖𝕥_${interaction.user.username}`;
+            ? `🔥-𝔽𝕚𝕘𝕦𝕣𝕒_${interaction.user.username}`
+            : `🔥-𝕋𝕚𝕔𝕜𝕖𝕥_${interaction.user.username}`;
 
-      // 🆕 สร้าง overwrites และเพิ่มสิทธิ์ให้โรลโมเดลในโหมด sculpt
+      // สร้าง overwrites และเพิ่มสิทธิ์ให้โรลโมเดลในโหมด sculpt/figura
       const overwrites = [
-  { id: interaction.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
-  { id: interaction.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages] },
-  { id: client.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ManageChannels] },
-];
-if (mode === "sculpt" || mode === "figura") {
-  overwrites.push({
-    id: MODEL_ROLE_ID,
-    allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages],
-  });
-}
+        { id: interaction.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
+        { id: interaction.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages] },
+        { id: client.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ManageChannels] },
+      ];
+      if (mode === "sculpt" || mode === "figura") {
+        overwrites.push({
+          id: MODEL_ROLE_ID,
+          allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages],
+        });
+      }
 
       const channel = await interaction.guild.channels.create({
         name: channelName,
@@ -362,9 +362,9 @@ if (mode === "sculpt" || mode === "figura") {
       );
 
       const contentTag =
-  (mode === "sculpt" || mode === "figura")
-    ? `<@${interaction.user.id}> <@&${MODEL_ROLE_ID}>`
-    : `<@${interaction.user.id}>`;
+        (mode === "sculpt" || mode === "figura")
+          ? `<@${interaction.user.id}> <@&${MODEL_ROLE_ID}>`
+          : `<@${interaction.user.id}>`;
 
       await channel.send({ content: contentTag, embeds: [openEmbed], components: [closeRow] });
 
@@ -460,7 +460,7 @@ if (mode === "sculpt" || mode === "figura") {
     try {
       // === ปุ่มหน้าตั้งค่า ===
       if (interaction.isButton()) {
-        // ปุ่มเปิดตั๋วทั้ง 4 โหมด
+        // ปุ่มเปิดตั๋วทุกโหมด
         if (
           interaction.customId === "create_ticket_standard" ||
           interaction.customId === "create_ticket_bundle" ||
@@ -570,7 +570,7 @@ if (mode === "sculpt" || mode === "figura") {
           return;
         }
 
-        // === ปุ่มเปิดโมดัลของรวมแอดออนสกิน (แก้ให้ชัวร์) ===
+        // === ปุ่มเปิดโมดัลของรวมแอดออนสกิน ===
         if (interaction.customId === "open_bundle_modal") {
           try {
             const modal = new ModalBuilder()
@@ -603,16 +603,18 @@ if (mode === "sculpt" || mode === "figura") {
           await deleteBuffPrompt(keyOf(interaction.user.id, interaction.channel.id));
 
           let selected = interaction.values.slice();
+
+          // mutual exclusion: hair_move vs long_hair_move
           if (selected.includes("hair_move") && selected.includes("long_hair_move")) {
             selected = selected.filter(v => v !== "hair_move");
           }
-          if (selected.includes("eye_blink") && selected.includes("eye_blink_new")) {
-            selected = selected.filter(v => v !== "eye_blink");
-          }
-           if (selected.includes("face_change")) {
+
+          // face_change auto-include eye_move + eye_blink (แทน eye_blink_new ที่ถูกลบ)
+          if (selected.includes("face_change")) {
             if (!selected.includes("eye_move")) selected.push("eye_move");
-            if (!selected.includes("eye_blink_new")) selected.push("eye_blink_new");
+            if (!selected.includes("eye_blink")) selected.push("eye_blink");
           }
+
           await interaction.deferUpdate();
 
           const k = keyOf(interaction.user.id, interaction.channel.id);
