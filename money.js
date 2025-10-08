@@ -295,14 +295,32 @@ module.exports = function (client) {
         return;
       }
 
-      // 2) โหมดเรียกใช้งาน trigger เช่น !nj
+      // 2) โหมดเรียกใช้งาน trigger เช่น !nj  -> จำกัด "เฉพาะแอดมินเท่านั้น"
       const content = (message.content || "").trim();
       if (!content.startsWith("!")) return;
+
+      // ต้องอยู่ในกิลด์ และผู้ใช้ต้องเป็นแอดมินเท่านั้นถึงจะเรียก trigger ได้
+      if (!message.guild) return;
+      const member = await message.guild.members.fetch(message.author.id).catch(() => null);
+      const isAdmin = member?.permissions?.has(PermissionsBitField.Flags.Administrator);
+      if (!isAdmin) {
+        // แจ้งเตือนเบาๆ แล้วลบทิ้ง
+        const warn = await message.reply({
+          content: "🔒 คำสั่งชำระเงินนี้ใช้ได้เฉพาะ **แอดมิน** เท่านั้น",
+          allowedMentions: { repliedUser: false },
+        }).catch(() => null);
+        setTimeout(() => warn?.delete?.().catch(() => {}), 5000);
+        // ไม่ต้องลบข้อความผู้ใช้เพื่อหลีกเลี่ยงความรู้สึกแย่ (ถ้าต้องการลบให้เปิดคอมเมนต์ด้านล่าง)
+        // if (message.channel.permissionsFor(message.client.user)?.has(PermissionsBitField.Flags.ManageMessages)) {
+        //   await message.delete().catch(() => {});
+        // }
+        return;
+      }
 
       const doc = await db.collection(COL).doc(content).get();
       if (!doc.exists) return; // ยังไม่ได้ตั้งค่า trigger นี้
 
-      // ลบข้อความคำสั่งของผู้ใช้
+      // ลบข้อความคำสั่งของผู้ใช้ (ถ้ามีสิทธิ์)
       if (
         message.guild &&
         message.channel &&
