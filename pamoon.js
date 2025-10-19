@@ -413,7 +413,7 @@ module.exports = function (client) {
     };
 
     const jobClose = schedule.scheduleJob(
-      { rule: "36 20 * * 1,2,3,4,5,6,7", tz: "Asia/Bangkok" },
+      { rule: "59 18 * * 1,2,3,4,5,6,7", tz: "Asia/Bangkok" },
       async () => {
         try {
           const nowTH = new Date().toLocaleString("th-TH", { timeZone: "Asia/Bangkok" });
@@ -426,7 +426,7 @@ module.exports = function (client) {
     );
 
     const jobOpen = schedule.scheduleJob(
-      { rule: "40 20 * * 1,2,3,4,5,6,7", tz: "Asia/Bangkok" },
+      { rule: "00 19 * * 1,2,3,4,5,6,7", tz: "Asia/Bangkok" },
       async () => {
         try {
           const guild = client.guilds.cache.first();
