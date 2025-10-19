@@ -31,7 +31,7 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
-  ],
+  ],              
 });
 
 // ===== โมดูลอื่น ๆ =====
@@ -53,10 +53,11 @@ require("./everyone")(client);
 require("./dis")(client);
 require("./ban")(client);
 require("./test")(client);
+require("./tt")(client);
 
 // ===== Dynamic Backoffice Chain =====
-const BACKOFFICE_ROOT_NAME  = "หลังบ้านประมูล"; // หมวดหลักตัวแรก (ของเดิมคุณ)
-const BACKOFFICE_BASE_NAME  = "หลังบ้านประมูล"; // prefix (เราจะนับตั้งแต่ 2)
+const BACKOFFICE_ROOT_NAME  = "หลังบ้านประมูล";
+const BACKOFFICE_BASE_NAME  = "หลังบ้านประมูล";
 const BACKOFFICE_START_N    = 2;
 const CATEGORY_MAX_CHANNELS = 50;
 const BACKOFFICE_MAX_N      = 4;
@@ -1023,7 +1024,3 @@ if (interaction.customId === "fill_info") {
 }
 });
 client.login(process.env.token);
-
-
-
-
