@@ -23,9 +23,6 @@ const userDetails = new Map();
 const ticketModes = new Map();
 const userSelections = new Map();
 const dynamicState = new Map();
-const bangsPromptMsg = new Map();
-const bangsMovePromptMsg = new Map();
-const buffPromptMsg = new Map();
 const postSelectNudge = new Map();
 
 const PAY_CHANNEL_ID = "1371395778727383040";
@@ -104,9 +101,6 @@ function initState(userId, channelId, mode) {
   ticketModes.set(k, mode);
   userSelections.set(k, new Set());
   dynamicState.set(k, { bangsQty: null, bangsBringOwn: false, bangsMoveQty: null, buffQty: null, buffNotes: "" });
-  bangsPromptMsg.delete(k);
-  bangsMovePromptMsg.delete(k);
-  buffPromptMsg.delete(k);
   postSelectNudge.delete(k);
   return k;
 }
@@ -194,51 +188,46 @@ async function postOrReplaceSummary(interaction) {
   });
   summaryMessages.set(k, msg);
 }
-async function sendBangsPrompt(interaction) {
-  const k = keyOf(interaction.user.id, interaction.channel.id);
-  const old = bangsPromptMsg.get(k);
-  if (old && old.deletable) await old.delete().catch(() => {});
-  const embed = new EmbedBuilder().setTitle("ปอยผม").setDescription(["โปรดเลือกหนึ่งตัวเลือก:", "• กรอกจำนวนปอยผม", "• นำมาเอง"].join("\n")).setColor(0x9b59b6);
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId("set_bangs_qty").setLabel("กรอกปอยผม").setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId("bangs_bring_own").setLabel("นำมาเอง").setStyle(ButtonStyle.Secondary)
-  );
-  const msg = await interaction.channel.send({ embeds: [embed], components: [row] });
-  bangsPromptMsg.set(k, msg);
+
+function buildDetailsModal(includeBangs, includeBangsMove, includeBuff) {
+  const modal = new ModalBuilder().setCustomId("details_modal").setTitle("กรอกรายละเอียดแอดออน");
+  if (includeBangs) {
+    const t = new TextInputBuilder()
+      .setCustomId("bangs_qty_or_own")
+      .setLabel("ปอยผม: จำนวนจุด หรือพิมพ์ own = นำมาเอง")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(false)
+      .setPlaceholder("เช่น 3 หรือ own");
+    modal.addComponents(new ActionRowBuilder().addComponents(t));
+  }
+  if (includeBangsMove) {
+    const t = new TextInputBuilder()
+      .setCustomId("bangs_move_qty")
+      .setLabel("ปอยผมขยับ: จำนวนจุด (ตัวเลข)")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true)
+      .setPlaceholder("เช่น 2");
+    modal.addComponents(new ActionRowBuilder().addComponents(t));
+  }
+  if (includeBuff) {
+    const q = new TextInputBuilder()
+      .setCustomId("buff_qty")
+      .setLabel("เอฟเฟก/บัฟ: จำนวน (ตัวเลข)")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true)
+      .setPlaceholder("เช่น 2");
+    const n = new TextInputBuilder()
+      .setCustomId("buff_notes")
+      .setLabel("รายละเอียดบัฟ (ถ้ามี)")
+      .setStyle(TextInputStyle.Paragraph)
+      .setRequired(false)
+      .setPlaceholder("พิมพ์ได้หลายบรรทัด");
+    modal.addComponents(new ActionRowBuilder().addComponents(q));
+    modal.addComponents(new ActionRowBuilder().addComponents(n));
+  }
+  return modal;
 }
-async function deleteBangsPrompt(k) {
-  const old = bangsPromptMsg.get(k);
-  if (old && old.deletable) await old.delete().catch(() => {});
-  bangsPromptMsg.delete(k);
-}
-async function sendBangsMovePrompt(interaction) {
-  const k = keyOf(interaction.user.id, interaction.channel.id);
-  const old = bangsMovePromptMsg.get(k);
-  if (old && old.deletable) await old.delete().catch(() => {});
-  const embed = new EmbedBuilder().setTitle("ปอยผมขยับ").setDescription("โปรดกรอกจำนวนจุดที่ขยับ (คิดจุดละ 10 บาท)").setColor(0x9b59b6);
-  const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("set_bangs_move_qty").setLabel("กรอกจำนวนจุด").setStyle(ButtonStyle.Primary));
-  const msg = await interaction.channel.send({ embeds: [embed], components: [row] });
-  bangsMovePromptMsg.set(k, msg);
-}
-async function deleteBangsMovePrompt(k) {
-  const old = bangsMovePromptMsg.get(k);
-  if (old && old.deletable) await old.delete().catch(() => {});
-  bangsMovePromptMsg.delete(k);
-}
-async function sendBuffPrompt(interaction) {
-  const k = keyOf(interaction.user.id, interaction.channel.id);
-  const old = buffPromptMsg.get(k);
-  if (old && old.deletable) await old.delete().catch(() => {});
-  const embed = new EmbedBuilder().setTitle("เอฟเฟก/บัฟ").setDescription(["โปรดเลือกหนึ่งตัวเลือก:", "• กรอกจำนวนบัฟ"].join("\n")).setColor(0x9b59b6);
-  const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("set_buff_qty").setLabel("กรอกจำนวนบัฟ").setStyle(ButtonStyle.Primary));
-  const msg = await interaction.channel.send({ embeds: [embed], components: [row] });
-  buffPromptMsg.set(k, msg);
-}
-async function deleteBuffPrompt(k) {
-  const old = buffPromptMsg.get(k);
-  if (old && old.deletable) await old.delete().catch(() => {});
-  buffPromptMsg.delete(k);
-}
+
 async function fetchValidCategory(guild, categoryId) {
   if (!/^\d{17,20}$/.test(String(categoryId || ""))) return { ok: false, reason: "รูปแบบหมวดหมู่ไม่ถูกต้อง" };
   let cat = guild.channels.cache.get(categoryId);
@@ -428,9 +417,6 @@ module.exports = function (client) {
             return safeReply(interaction, { content: "❌ คุณไม่มีสิทธิ์ในการปิดตั๋วนี้" }, true);
           }
           const k = keyOf(interaction.user.id, interaction.channel.id);
-          await deleteBangsPrompt(k);
-          await deleteBangsMovePrompt(k);
-          await deleteBuffPrompt(k);
           summaryMessages.delete(k);
           formMessages.delete(k);
           userTotals.delete(k);
@@ -470,54 +456,8 @@ module.exports = function (client) {
           setDetails(k, []);
           userSelections.set(k, new Set());
           dynamicState.set(k, { bangsQty: null, bangsBringOwn: false, bangsMoveQty: null, buffQty: null, buffNotes: "" });
-          await deleteBangsPrompt(k);
-          await deleteBangsMovePrompt(k);
-          await deleteBuffPrompt(k);
           if (!formMessages.has(k)) postSelectNudge.set(k, true);
           await postOrReplaceSummary(interaction);
-          return;
-        }
-        if (interaction.customId === "set_bangs_qty") {
-          const modal = new ModalBuilder().setCustomId("bangs_qty_modal").setTitle("กำหนดจำนวนปอยผม");
-          const input = new TextInputBuilder().setCustomId("bangs_qty").setLabel("จำนวนปอยผม").setStyle(TextInputStyle.Short).setRequired(true);
-          modal.addComponents(new ActionRowBuilder().addComponents(input));
-          await interaction.showModal(modal);
-          return;
-        }
-        if (interaction.customId === "bangs_bring_own") {
-          await interaction.deferUpdate();
-          const k = keyOf(interaction.user.id, interaction.channel.id);
-          const dyn = ensureDyn(k);
-          dyn.bangsBringOwn = true;
-          dyn.bangsQty = null;
-          await deleteBangsPrompt(k);
-          const set = userSelections.get(k) || new Set();
-          const needMove = set.has("bangs_move") && !Number.isFinite(ensureDyn(k).bangsMoveQty);
-          if (needMove) {
-            await sendBangsMovePrompt(interaction);
-            return;
-          }
-          const needBuff = set.has("buff") && !Number.isFinite(ensureDyn(k).buffQty);
-          if (needBuff) {
-            await sendBuffPrompt(interaction);
-            return;
-          }
-          await postOrReplaceSummary(interaction);
-          return;
-        }
-        if (interaction.customId === "set_bangs_move_qty") {
-          const modal = new ModalBuilder().setCustomId("bangs_move_qty_modal").setTitle("กำหนดจำนวนปอยผมขยับ");
-          const input = new TextInputBuilder().setCustomId("bangs_move_qty").setLabel("จำนวนจุดที่ขยับ").setStyle(TextInputStyle.Short).setRequired(true);
-          modal.addComponents(new ActionRowBuilder().addComponents(input));
-          await interaction.showModal(modal);
-          return;
-        }
-        if (interaction.customId === "set_buff_qty") {
-          const modal = new ModalBuilder().setCustomId("buff_qty_modal").setTitle("กำหนดจำนวนบัฟ");
-          const qty = new TextInputBuilder().setCustomId("buff_qty").setLabel("จำนวนบัฟ").setStyle(TextInputStyle.Short).setRequired(true);
-          const notes = new TextInputBuilder().setCustomId("buff_notes").setLabel("บัฟที่ต้องการ").setPlaceholder("พิมพ์ได้หลายบรรทัด").setStyle(TextInputStyle.Paragraph).setRequired(false);
-          modal.addComponents(new ActionRowBuilder().addComponents(qty), new ActionRowBuilder().addComponents(notes));
-          await interaction.showModal(modal);
           return;
         }
         if (interaction.customId === "open_form") {
@@ -545,16 +485,11 @@ module.exports = function (client) {
 
       if (interaction.isStringSelectMenu()) {
         if (interaction.customId === "select_features") {
-          const k0 = keyOf(interaction.user.id, interaction.channel.id);
-          await deleteBangsPrompt(k0);
-          await deleteBangsMovePrompt(k0);
-          await deleteBuffPrompt(k0);
           let selected = interaction.values.slice();
           if (selected.includes("face_change")) {
             if (!selected.includes("eye_move")) selected.push("eye_move");
             if (!selected.includes("eye_blink")) selected.push("eye_blink");
           }
-          await interaction.deferUpdate();
           const k = keyOf(interaction.user.id, interaction.channel.id);
           ticketModes.set(k, "standard");
           dynamicState.set(k, { bangsQty: null, bangsBringOwn: false, bangsMoveQty: null, buffQty: null, buffNotes: "" });
@@ -565,22 +500,22 @@ module.exports = function (client) {
           const subtotal = fixedKeys.reduce((acc, v) => acc + (prices[v] || 0), 0);
           setDetails(k, detailLines);
           setSubtotal(k, subtotal);
+
+          const needBangs = set.has("bangs");
+          const needMove = set.has("bangs_move");
+          const needBuff = set.has("buff");
+
+          if (needBangs || needMove || needBuff) {
+            const modal = buildDetailsModal(needBangs, needMove, needBuff);
+            await interaction.showModal(modal);
+            return;
+          }
+
           if (!formMessages.has(k)) postSelectNudge.set(k, true);
-          if (set.has("bangs")) {
-            await sendBangsPrompt(interaction);
-            return;
-          }
-          if (set.has("bangs_move")) {
-            await sendBangsMovePrompt(interaction);
-            return;
-          }
-          if (set.has("buff")) {
-            await sendBuffPrompt(interaction);
-            return;
-          }
           await postOrReplaceSummary(interaction);
           return;
         }
+
         if (interaction.customId === "preset_select") {
           await interaction.deferUpdate();
           const table = {
@@ -601,9 +536,6 @@ module.exports = function (client) {
           ticketModes.set(k, "preset");
           userSelections.set(k, new Set());
           dynamicState.set(k, { bangsQty: null, bangsBringOwn: false, bangsMoveQty: null, buffQty: null, buffNotes: "" });
-          await deleteBangsPrompt(k);
-          await deleteBangsMovePrompt(k);
-          await deleteBuffPrompt(k);
           setDetails(k, lines);
           setSubtotal(k, subtotal);
           await postOrReplaceSummary(interaction);
@@ -626,15 +558,13 @@ module.exports = function (client) {
           ticketModes.set(k, "bundle");
           userSelections.set(k, new Set());
           dynamicState.set(k, { bangsQty: null, bangsBringOwn: false, bangsMoveQty: null, buffQty: null, buffNotes: "" });
-          await deleteBangsPrompt(k);
-          await deleteBangsMovePrompt(k);
-          await deleteBuffPrompt(k);
           setDetails(k, [`**• รวมแอดออนสกิน: ${n} × 10 = ${addPrice} บาท**`]);
           setSubtotal(k, addPrice);
           await interaction.deferUpdate();
           await postOrReplaceSummary(interaction);
           return;
         }
+
         if (interaction.customId === "skin_order_form") {
           const xboxName = interaction.fields.getTextInputValue("xbox_name");
           const lockOption = interaction.fields.getTextInputValue("lock_option");
@@ -650,65 +580,49 @@ module.exports = function (client) {
           await interaction.deferUpdate();
           return;
         }
-        if (interaction.customId === "bangs_qty_modal") {
-          const raw = (interaction.fields.getTextInputValue("bangs_qty") || "0").trim();
-          if (!/^\d+$/.test(raw)) {
-            return safeReply(interaction, { content: "❌ กรุณากรอกจำนวนปอยผมเป็นตัวเลขจำนวนเต็มตั้งแต่ 0 ขึ้นไป" }, true);
-          }
-          const n = parseInt(raw, 10);
+
+        if (interaction.customId === "details_modal") {
           const k = keyOf(interaction.user.id, interaction.channel.id);
-          const dyn = ensureDyn(k);
-          dyn.bangsQty = n;
-          dyn.bangsBringOwn = false;
-          await interaction.deferUpdate();
-          await deleteBangsPrompt(k);
           const set = userSelections.get(k) || new Set();
-          if (set.has("bangs_move") && !Number.isFinite(ensureDyn(k).bangsMoveQty)) {
-            await sendBangsMovePrompt(interaction);
-            return;
+          const dyn = ensureDyn(k);
+
+          if (set.has("bangs")) {
+            const raw = (interaction.fields.getTextInputValue("bangs_qty_or_own") || "").trim().toLowerCase();
+            if (!raw || raw === "own") {
+              dyn.bangsBringOwn = true;
+              dyn.bangsQty = null;
+            } else if (/^\d+$/.test(raw)) {
+              dyn.bangsBringOwn = false;
+              dyn.bangsQty = parseInt(raw, 10);
+            } else {
+              return safeReply(interaction, { content: "❌ ปอยผม: กรอกตัวเลข หรือพิมพ์ own", }, true);
+            }
           }
-          const needBuff = set.has("buff") && !Number.isFinite(ensureDyn(k).buffQty);
-          if (needBuff) {
-            await sendBuffPrompt(interaction);
-            return;
+
+          if (set.has("bangs_move")) {
+            const raw = (interaction.fields.getTextInputValue("bangs_move_qty") || "").trim();
+            if (!/^\d+$/.test(raw)) {
+              return safeReply(interaction, { content: "❌ ปอยผมขยับ: กรุณากรอกจำนวนเป็นตัวเลขจำนวนเต็ม", }, true);
+            }
+            dyn.bangsMoveQty = parseInt(raw, 10);
           }
+
+          if (set.has("buff")) {
+            const rawQ = (interaction.fields.getTextInputValue("buff_qty") || "0").trim();
+            if (!/^\d+$/.test(rawQ)) {
+              return safeReply(interaction, { content: "❌ บัฟ: กรุณากรอกจำนวนเป็นตัวเลขจำนวนเต็ม", }, true);
+            }
+            dyn.buffQty = parseInt(rawQ, 10);
+            dyn.buffNotes = (interaction.fields.getTextInputValue("buff_notes") || "").trim();
+          }
+
+          await interaction.deferUpdate();
           await postOrReplaceSummary(interaction);
           return;
         }
-        if (interaction.customId === "bangs_move_qty_modal") {
-          const raw = (interaction.fields.getTextInputValue("bangs_move_qty") || "0").trim();
-          if (!/^\d+$/.test(raw)) {
-            return safeReply(interaction, { content: "❌ กรุณากรอกจำนวนจุดที่ขยับเป็นตัวเลขจำนวนเต็มตั้งแต่ 0 ขึ้นไป" }, true);
-          }
-          const n = parseInt(raw, 10);
-          const k = keyOf(interaction.user.id, interaction.channel.id);
-          const dyn = ensureDyn(k);
-          dyn.bangsMoveQty = n;
-          await interaction.deferUpdate();
-          await deleteBangsMovePrompt(k);
-          const set = userSelections.get(k) || new Set();
-          const needBuff = set.has("buff") && !Number.isFinite(ensureDyn(k).buffQty);
-          if (needBuff) {
-            await sendBuffPrompt(interaction);
-            return;
-          }
-          await postOrReplaceSummary(interaction);
-          return;
-        }
-        if (interaction.customId === "buff_qty_modal") {
-          const raw = (interaction.fields.getTextInputValue("buff_qty") || "0").trim();
-          if (!/^\d+$/.test(raw)) {
-            return safeReply(interaction, { content: "❌ กรุณากรอกจำนวนบัฟเป็นตัวเลขจำนวนเต็มตั้งแต่ 0 ขึ้นไป" }, true);
-          }
-          const n = parseInt(raw, 10);
-          const notes = (interaction.fields.getTextInputValue("buff_notes") || "").trim();
-          const k = keyOf(interaction.user.id, interaction.channel.id);
-          const dyn = ensureDyn(k);
-          dyn.buffQty = n;
-          dyn.buffNotes = notes;
-          await interaction.deferUpdate();
-          await deleteBuffPrompt(k);
-          await postOrReplaceSummary(interaction);
+
+        if (interaction.customId === "bangs_qty_modal" || interaction.customId === "bangs_move_qty_modal" || interaction.customId === "buff_qty_modal") {
+          await interaction.reply({ content: "ฟอร์มนี้ถูกแทนที่ด้วยฟอร์มรวมแล้ว", flags: MessageFlags.Ephemeral });
           return;
         }
       }
