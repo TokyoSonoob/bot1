@@ -406,8 +406,8 @@ module.exports = function (client) {
 
       const channelName =
         mode === "sculpt" ? `🔥-𝕄𝕠𝕕𝕖𝕝_${interaction.user.username}` :
-        mode === "figura" ? `🔥-𝔽𝕚𝕈𝕦𝕣𝕒_${interaction.user.username}` :
-                            `🔥-𝕋𝕚𝕜𝕜𝕖𝕥_${interaction.user.username}`;
+        mode === "figura" ? `🔥-𝔽𝕚𝕘𝕦𝕣𝕒_${interaction.user.username}` :
+                            `🔥-𝕋𝕚𝕔𝕜𝕖𝕥_${interaction.user.username}`;
 
       const overwrites = [
         { id: interaction.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
