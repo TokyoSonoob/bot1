@@ -788,7 +788,6 @@ module.exports = function (client) {
           return;
         }
       }
-
       if (interaction.isStringSelectMenu()) {
         if (interaction.customId === "select_features") {
           let selected = interaction.values.slice();
@@ -806,8 +805,6 @@ module.exports = function (client) {
           const subtotal = fixedKeys.reduce((acc, v) => acc + (prices[v] || 0), 0);
           setDetails(k, detailLines);
           setSubtotal(k, subtotal);
-
-          // เมื่อกดออฟชั่นแล้ว บังคับว่าช่องนี้ต้องกรอกข้อมูล
           formRequired.set(interaction.channel.id, true);
 
           const needBangs = set.has("bangs");
@@ -898,8 +895,6 @@ module.exports = function (client) {
       const ownerId = channelOwner.get(message.channel.id);
       const needForm = formRequired.get(message.channel.id);
       const doneForm = formCompleted.get(message.channel.id);
-
-      // จะแจ้งเตือนเฉพาะตอนที่ "เลือกออฟชั่นแล้ว" (needForm=true ถูกตั้งจาก select_features) แต่ "ยังไม่กรอกข้อมูล"
       if (!ownerId || !needForm) return;
       if (doneForm) return;
       if (message.author.id !== ownerId) return;
