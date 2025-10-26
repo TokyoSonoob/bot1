@@ -234,7 +234,9 @@ function figuraOptionComponents() {
 }
 
 async function postOrReplaceSummary(interaction) {
-  const k = keyOf(interaction.user.id, interaction.channel.id);
+  // อ้างอิงคีย์ของเจ้าของห้องเพื่อความคงที่ของ state
+  const ownerId = channelOwner.get(interaction.channel.id) || interaction.user.id;
+  const k = keyOf(ownerId, interaction.channel.id);
   const mode = ticketModes.get(k) || "standard";
   const selections = userSelections.get(k) || new Set();
   const dyn = ensureDyn(k);
@@ -272,7 +274,7 @@ async function postOrReplaceSummary(interaction) {
     if (old && old.deletable) await old.delete().catch(() => {});
     const payEmbed = new EmbedBuilder().setImage(FIGURA_QR_URL).setColor(0x9b59b6);
     const msg = await interaction.channel.send({
-      content: `<@${interaction.user.id}>\n` + lines.join("\n"),
+      content: `<@${ownerId}>\n` + lines.join("\n"),
       embeds: [payEmbed],
       components,
     });
@@ -307,7 +309,7 @@ async function postOrReplaceSummary(interaction) {
   if (old && old.deletable) await old.delete().catch(() => {});
   const payEmbed = new EmbedBuilder().setImage(PAY_IMAGE_URL).setColor(0x9b59b6);
   const msg = await interaction.channel.send({
-    content: `<@${interaction.user.id}>\n` + lines.join("\n"),
+    content: `<@${ownerId}>\n` + lines.join("\n"),
     embeds: [payEmbed],
     components,
   });
@@ -407,7 +409,7 @@ module.exports = function (client) {
       const channelName =
         mode === "sculpt" ? `🔥-𝕄𝕠𝕕𝕖𝕝_${interaction.user.username}` :
         mode === "figura" ? `🔥-𝔽𝕚𝕘𝕦𝕣𝕒_${interaction.user.username}` :
-                            `🔥-𝕋𝕚𝕔𝕜𝕖𝕥_${interaction.user.username}`;
+                            `🔥-𝕋𝕚𝕔𝕜𝕖𝕕𝕥_${interaction.user.username}`.replace("𝕕", "k");
 
       const overwrites = [
         { id: interaction.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
@@ -525,11 +527,13 @@ module.exports = function (client) {
             return safeReply(interaction, { content: "❌ เฉพาะแอดมินเท่านั้นที่อัปเป็นคิวเร่งได้" }, true);
           }
           const oldName = interaction.channel.name || "";
-          const core = oldName.replace(/^🔥+[-_ ]?/, "");
-          const newName = `🔥🔥-${core}`;
-          if (oldName === newName) {
+          // หากมี "🔥🔥" ตรงไหนก็ได้ในชื่อ ให้ถือว่าเป็นคิวเร่งอยู่แล้ว
+          if (oldName.includes("🔥🔥")) {
             return safeReply(interaction, { content: "✅ ห้องนี้เป็นคิวเร่งอยู่แล้ว" }, true);
           }
+          // ตัดไฟที่ขึ้นต้นและตัวคั่นออก (ถ้ามี) แล้วเติม "🔥🔥-" ข้างหน้า
+          const core = oldName.replace(/^🔥+[-_ ]?/, "");
+          const newName = `🔥🔥-${core}`;
           try {
             await interaction.channel.setName(newName);
             return safeReply(interaction, { content: "✅ อัปเป็นคิวเร่งแล้ว" }, true);
@@ -625,11 +629,12 @@ module.exports = function (client) {
 
 
         if (interaction.customId === "fig_rights_normal" || interaction.customId === "fig_rights_plus50" || interaction.customId === "fig_rights_x2") {
-          const k = keyOf(interaction.user.id, interaction.channel.id);
+          const ownerId = channelOwner.get(interaction.channel.id) || interaction.user.id;
+          const k = keyOf(ownerId, interaction.channel.id);
           if ((ticketModes.get(k) || "") !== "figura") return safeReply(interaction, { content: "โปรดเลือกสิ่งที่ต้องการก่อน" }, true);
+          try { await interaction.deferUpdate(); } catch {}
           figuraRights.set(k, interaction.customId === "fig_rights_plus50" ? "plus50" : interaction.customId === "fig_rights_x2" ? "x2" : "normal");
           await postOrReplaceSummary(interaction);
-          try { await interaction.deferUpdate(); } catch {}
           return;
         }
 
@@ -653,21 +658,25 @@ module.exports = function (client) {
       if (interaction.isModalSubmit()) {
         if (interaction.customId === "order_qty_modal_standard") {
           const raw = (interaction.fields.getTextInputValue("order_qty") || "").trim();
-          if (!/^\d{1,3}$/.test(raw)) return safeReply(interaction, { content: "❌ กรุณากรอกจำนวนเป็นเลข 1-999" }, true);
+          if (!/^\d{1,3}$/.test(raw)) return safeReply(interaction, { content: "❌ กรุณากรอกจำนวนเป็นเลข 1-20" }, true);
           const qty = Math.max(1, parseInt(raw, 10));
+          if (qty > 20) return safeReply(interaction, { content: "❌ กรอกได้สูงสุด 20 ชิ้น" }, true);
 
           await ensureDeferred(interaction, true);
           const chan = await createTicketChannel(interaction, "standard");
           if (!chan) return;
 
           channelOwner.set(chan.id, interaction.user.id);
-          formRequired.set(chan.id, true);
           formCompleted.set(chan.id, false);
 
           if (qty === 1) {
+            formRequired.set(chan.id, true);
             await postStandardUIInChannel(chan);
             await interaction.editReply(`✅ เปิดตั๋วให้แล้ว : ${chan}`);
             return;
+          } else {
+            // หลายชิ้น: ไม่ต้องกรอกในห้องหลัก
+            formRequired.set(chan.id, false);
           }
 
           const threadLinks = [];
@@ -752,7 +761,8 @@ module.exports = function (client) {
 
 
         if (interaction.customId === "details_modal") {
-          const k = keyOf(interaction.user.id, interaction.channel.id);
+          const ownerId = channelOwner.get(interaction.channel.id) || interaction.user.id;
+          const k = keyOf(ownerId, interaction.channel.id);
           const set = userSelections.get(k) || new Set();
           const dyn = ensureDyn(k);
 
@@ -786,7 +796,8 @@ module.exports = function (client) {
             if (!selected.includes("eye_move")) selected.push("eye_move");
             if (!selected.includes("eye_blink")) selected.push("eye_blink");
           }
-          const k = keyOf(interaction.user.id, interaction.channel.id);
+          const ownerId = channelOwner.get(interaction.channel.id) || interaction.user.id;
+          const k = keyOf(ownerId, interaction.channel.id);
           ticketModes.set(k, "standard");
           const set = new Set(selected);
           userSelections.set(k, set);
@@ -795,6 +806,9 @@ module.exports = function (client) {
           const subtotal = fixedKeys.reduce((acc, v) => acc + (prices[v] || 0), 0);
           setDetails(k, detailLines);
           setSubtotal(k, subtotal);
+
+          // เมื่อกดออฟชั่นแล้ว บังคับว่าช่องนี้ต้องกรอกข้อมูล
+          formRequired.set(interaction.channel.id, true);
 
           const needBangs = set.has("bangs");
           const needMove = set.has("bangs_move");
@@ -826,7 +840,8 @@ module.exports = function (client) {
         }
 
         if (interaction.customId === "figura_select") {
-          const k = keyOf(interaction.user.id, interaction.channel.id);
+          const ownerId = channelOwner.get(interaction.channel.id) || interaction.user.id;
+          const k = keyOf(ownerId, interaction.channel.id);
           ticketModes.set(k, "figura");
           const set = new Set(interaction.values || []);
           userSelections.set(k, set);
@@ -884,6 +899,7 @@ module.exports = function (client) {
       const needForm = formRequired.get(message.channel.id);
       const doneForm = formCompleted.get(message.channel.id);
 
+      // จะแจ้งเตือนเฉพาะตอนที่ "เลือกออฟชั่นแล้ว" (needForm=true ถูกตั้งจาก select_features) แต่ "ยังไม่กรอกข้อมูล"
       if (!ownerId || !needForm) return;
       if (doneForm) return;
       if (message.author.id !== ownerId) return;
