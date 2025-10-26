@@ -556,7 +556,7 @@ module.exports = function (client) {
             .setLabel("ชื่อXbox (ถูกต้อง100%)")
             .setStyle(TextInputStyle.Short)
             .setRequired(false)
-            .setPlaceholder("เช่น Gamer123");
+            .setPlaceholder("เช่น Seamuww");
 
           const lock = new TextInputBuilder()
             .setCustomId("lock_option")
