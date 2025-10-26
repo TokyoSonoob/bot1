@@ -4,19 +4,14 @@ const {
   ButtonStyle,
   ActionRowBuilder,
   PermissionsBitField,
-  MessageFlags, // ✅ ใช้ flags แทน ephemeral
+  MessageFlags,
 } = require("discord.js");
-// ถ้ามี express/firebase ใช้ที่อื่นคงไว้ได้ แต่ในไฟล์นี้ไม่ได้ใช้จริง
-// const express = require("express");
-// const { db } = require("./firebase");
 
 module.exports = function (client) {
   const PREFIX = "!";
   const STAFF_ROLE_ID = "1374387525040214016";
-  const CATEGORY_ID = "1374396536951406683"; // หมวดหมู่ห้องตั๋วสกิน
+  const CATEGORY_ID = "1374396536951406683";
   const FORM_CHANNEL_ID = "1374427289948786759";
-
-  // ✅ ห้องที่ต้องตรวจและโพสต์เมนูอัตโนมัติ
   const SKIN_MENU_CHANNEL_ID = "1399272990914514964";
 
   const OWNER_IDS = {
@@ -438,3 +433,4 @@ module.exports = function (client) {
     }
   });
 };
+
