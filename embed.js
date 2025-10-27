@@ -22,14 +22,11 @@ module.exports = (client) => {
   const CMD_S = "s";
   const MODAL_EMBED = "embed_form_modal";
 
-  // ปุ่ม
   const BTN_FIX = "btn_fix_ticket";
   const BTN_CLOSE = "btn_close_ticket";
 
-  // role ที่กดปุ่มได้ (ทุกคนเห็นปุ่ม แต่กดได้เฉพาะคนมีสิทธิ์)
   const ALLOWED_ROLE_IDS = ["1413865323337093300", "1413570692330426408"];
 
-  // ตัดคำนำหน้า 🔥/⏳ (+ขีด/ช่องว่าง) ออกจากหัวชื่อห้อง
   const STRIP_PREFIX_RE =
     /^(?:\u{1F525}|\u{23F3}[\uFE0E\uFE0F]?)+(?:[\p{Zs}]*(?:[\p{Pd}])+)?[\p{Zs}]*/u;
 
@@ -47,13 +44,13 @@ module.exports = (client) => {
           name: CMD_FIX,
           description: "แก้คำนำหน้า 🔥/⏳️ ของชื่อห้อง",
           dm_permission: false,
-          default_member_permissions: ADMIN, // แอดมินเท่านั้น
+          default_member_permissions: ADMIN,
         },
         {
           name: CMD_S,
           description: "ลบคำนำหน้าแล้วส่งเครดิตพร้อมปุ่ม",
           dm_permission: false,
-          default_member_permissions: ADMIN, // แอดมินเท่านั้น
+          default_member_permissions: ADMIN,
         },
       ];
 
@@ -187,7 +184,7 @@ module.exports = (client) => {
         }
 
         if (!interaction.deferred && !interaction.replied) {
-          await interaction.deferReply({ flags: 1 << 6 }); // EPHEMERAL
+          await interaction.deferReply({ flags: 1 << 6 });
         }
         if (!interaction.guild || !interaction.channel) {
           await interaction.editReply("❌ ใช้ในเซิร์ฟเวอร์เท่านั้น");
@@ -208,7 +205,6 @@ module.exports = (client) => {
           }
         }
 
-        // ส่ง @everyone + embed + ปุ่ม (ทุกคนเห็น)
         const allowPing = canMentionEveryone(interaction.guild, channel);
         const creditEmbed = new EmbedBuilder()
           .setColor(0x9b59b6)
@@ -247,16 +243,23 @@ module.exports = (client) => {
       // ===== ปุ่ม: แก้ไขงาน =====
       if (interaction.isButton() && interaction.customId === BTN_FIX) {
         try {
-          // ให้ทุกคนเห็นปุ่ม แต่กดได้เฉพาะแอดมิน/role ที่กำหนด — ถ้าไม่ใช่ ให้เงียบ (ไม่มีข้อความตอบกลับ)
-          if (!isAllowed(interaction.member)) {
-            await interaction.deferUpdate().catch(() => {});
-            return;
-          }
+          // ✅ ทุกคนกดได้
           await interaction.deferUpdate().catch(() => {});
           const channel = interaction.channel;
-          if (channel && canManageChannel(interaction.guild, channel)) {
-            await doFixRename(channel).catch(() => {});
-          }
+          if (!channel?.send) return;
+
+          const ROLE_TO_PING = "1336564600598036501";
+          const embed = new EmbedBuilder()
+            .setColor(0x9b59b6)
+            .setDescription("**เขียนข้อมูลในส่งที่จะแก้ได้เลยนะคับ เดี๋ยวทางแอดมินจะมาตอบในไม่ช้า**")
+            .setFooter({ text: "Make by Purple Shop" })
+            .setTimestamp();
+
+          await channel.send({
+            content: `<@&${ROLE_TO_PING}>`,
+            allowedMentions: { roles: [ROLE_TO_PING] },
+            embeds: [embed],
+          });
         } catch (e) {
           console.error("BTN_FIX error:", e);
         }
@@ -266,7 +269,6 @@ module.exports = (client) => {
       // ===== ปุ่ม: ปิดตั๋ว (ลบห้อง) =====
       if (interaction.isButton() && interaction.customId === BTN_CLOSE) {
         try {
-          // 👇 ให้ทุกคนปิดห้องได้ (ไม่เช็ค isAllowed)
           await interaction.deferUpdate().catch(() => {});
           const channel = interaction.channel;
           if (channel && canManageChannel(interaction.guild, channel)) {
