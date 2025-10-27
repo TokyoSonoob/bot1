@@ -234,7 +234,6 @@ function figuraOptionComponents() {
 }
 
 async function postOrReplaceSummary(interaction) {
-  // อ้างอิงคีย์ของเจ้าของห้องเพื่อความคงที่ของ state
   const ownerId = channelOwner.get(interaction.channel.id) || interaction.user.id;
   const k = keyOf(ownerId, interaction.channel.id);
   const mode = ticketModes.get(k) || "standard";
@@ -409,7 +408,7 @@ module.exports = function (client) {
       const channelName =
         mode === "sculpt" ? `🔥-𝕄𝕠𝕕𝕖𝕝_${interaction.user.username}` :
         mode === "figura" ? `🔥-𝔽𝕚𝕘𝕦𝕣𝕒_${interaction.user.username}` :
-                            `🔥-𝕋𝕚𝕔𝕜𝕖𝕕𝕥_${interaction.user.username}`.replace("𝕕", "k");
+                            `🔥-𝕋𝕚𝕔𝕜𝕖𝕥_${interaction.user.username}`.replace("𝕕", "k");
 
       const overwrites = [
         { id: interaction.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
@@ -907,3 +906,4 @@ module.exports = function (client) {
     }
   });
 };
+
