@@ -1,7 +1,3 @@
-// embed_fix_s.js
-// รวม /embed /fix /s ไว้ในโมดูลเดียว (discord.js v14)
-// ต้องมี process.env.TOKEN (โหลด .env ใน index.js ก่อน require โมดูลนี้)
-
 module.exports = (client) => {
   const {
     REST,
@@ -21,15 +17,11 @@ module.exports = (client) => {
   const CMD_FIX = "fix";
   const CMD_S = "s";
   const MODAL_EMBED = "embed_form_modal";
-
   const BTN_FIX = "btn_fix_ticket";
   const BTN_CLOSE = "btn_close_ticket";
-
   const ALLOWED_ROLE_IDS = ["1413865323337093300", "1413570692330426408"];
-
   const STRIP_PREFIX_RE =
     /^(?:\u{1F525}|\u{23F3}[\uFE0E\uFE0F]?)+(?:[\p{Zs}]*(?:[\p{Pd}])+)?[\p{Zs}]*/u;
-
   const normalizeEmojiLeading = (s) => s.replace(/^[\uFE0E\uFE0F]+/, "");
 
   client.once(Events.ClientReady, async () => {
@@ -37,7 +29,6 @@ module.exports = (client) => {
       const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
       const appId = client.application?.id ?? client.user.id;
       const ADMIN = String(PermissionsBitField.Flags.Administrator);
-
       const commands = [
         { name: CMD_EMBED, description: "เปิดฟอร์มเพื่อส่ง Embed", dm_permission: false },
         {
@@ -53,7 +44,6 @@ module.exports = (client) => {
           default_member_permissions: ADMIN,
         },
       ];
-
       for (const [guildId] of client.guilds.cache) {
         await rest.put(Routes.applicationGuildCommands(appId, guildId), { body: commands });
         console.log(`✅ Registered /${CMD_EMBED}, /${CMD_FIX}, /${CMD_S} in ${guildId}`);
@@ -112,41 +102,34 @@ module.exports = (client) => {
 
   client.on(Events.InteractionCreate, async (interaction) => {
     try {
-      // ===== /embed =====
       if (interaction.isChatInputCommand() && interaction.commandName === CMD_EMBED) {
         const modal = new ModalBuilder().setCustomId(MODAL_EMBED).setTitle("สร้าง Embed");
-
         const titleInput = new TextInputBuilder()
           .setCustomId("title")
           .setLabel("หัวข้อ")
           .setStyle(TextInputStyle.Short)
           .setRequired(true)
           .setMaxLength(256);
-
         const descInput = new TextInputBuilder()
           .setCustomId("message")
           .setLabel("ข้อความ")
           .setStyle(TextInputStyle.Paragraph)
           .setRequired(true)
           .setMaxLength(4000);
-
         const imageInput = new TextInputBuilder()
           .setCustomId("image")
           .setLabel("ลิงก์รูปภาพ (ไม่บังคับ)")
           .setStyle(TextInputStyle.Short)
           .setRequired(false);
-
         modal.addComponents(
           new ActionRowBuilder().addComponents(titleInput),
           new ActionRowBuilder().addComponents(descInput),
           new ActionRowBuilder().addComponents(imageInput)
         );
-
         await interaction.showModal(modal);
         return;
       }
 
-      // ===== /fix (admin only) =====
       if (interaction.isChatInputCommand() && interaction.commandName === CMD_FIX) {
         if (!interaction.memberPermissions?.has(PermissionsBitField.Flags.Administrator)) {
           return safeReply(interaction, { content: "❌ คำสั่งนี้ใช้ได้เฉพาะแอดมิน", flags: 1 << 6 });
@@ -177,12 +160,10 @@ module.exports = (client) => {
         return;
       }
 
-      // ===== /s (admin only) =====
       if (interaction.isChatInputCommand() && interaction.commandName === CMD_S) {
         if (!interaction.memberPermissions?.has(PermissionsBitField.Flags.Administrator)) {
           return safeReply(interaction, { content: "❌ คำสั่งนี้ใช้ได้เฉพาะแอดมิน", flags: 1 << 6 });
         }
-
         if (!interaction.deferred && !interaction.replied) {
           await interaction.deferReply({ flags: 1 << 6 });
         }
@@ -190,11 +171,9 @@ module.exports = (client) => {
           await interaction.editReply("❌ ใช้ในเซิร์ฟเวอร์เท่านั้น");
           return;
         }
-
         const channel = interaction.channel;
         const before = channel.name || "";
         const after = before.replace(STRIP_PREFIX_RE, "");
-
         if (after !== before && typeof channel.setName === "function") {
           if (canManageChannel(interaction.guild, channel)) {
             try {
@@ -204,7 +183,6 @@ module.exports = (client) => {
             }
           }
         }
-
         const allowPing = canMentionEveryone(interaction.guild, channel);
         const creditEmbed = new EmbedBuilder()
           .setColor(0x9b59b6)
@@ -219,12 +197,10 @@ module.exports = (client) => {
           )
           .setFooter({ text: "Make by Purple Shop" })
           .setTimestamp();
-
         const row = new ActionRowBuilder().addComponents(
           new ButtonBuilder().setCustomId(BTN_FIX).setLabel("แก้ไขงาน").setStyle(ButtonStyle.Primary),
           new ButtonBuilder().setCustomId(BTN_CLOSE).setLabel("ปิดตั๋ว").setStyle(ButtonStyle.Danger)
         );
-
         try {
           await channel.send({
             content: "@everyone",
@@ -240,21 +216,20 @@ module.exports = (client) => {
         return;
       }
 
-      // ===== ปุ่ม: แก้ไขงาน =====
       if (interaction.isButton() && interaction.customId === BTN_FIX) {
         try {
-          // ✅ ทุกคนกดได้
           await interaction.deferUpdate().catch(() => {});
           const channel = interaction.channel;
-          if (!channel?.send) return;
-
+          if (!channel) return;
+          if (canManageChannel(interaction.guild, channel)) {
+            await doFixRename(channel).catch(() => {});
+          }
           const ROLE_TO_PING = "1336564600598036501";
           const embed = new EmbedBuilder()
             .setColor(0x9b59b6)
             .setDescription("**เขียนข้อมูลในส่งที่จะแก้ได้เลยนะคับ เดี๋ยวทางแอดมินจะมาตอบในไม่ช้า**")
             .setFooter({ text: "Make by Purple Shop" })
             .setTimestamp();
-
           await channel.send({
             content: `<@&${ROLE_TO_PING}>`,
             allowedMentions: { roles: [ROLE_TO_PING] },
@@ -266,7 +241,6 @@ module.exports = (client) => {
         return;
       }
 
-      // ===== ปุ่ม: ปิดตั๋ว (ลบห้อง) =====
       if (interaction.isButton() && interaction.customId === BTN_CLOSE) {
         try {
           await interaction.deferUpdate().catch(() => {});
@@ -280,35 +254,29 @@ module.exports = (client) => {
         return;
       }
 
-      // ===== Modal Submit: /embed =====
       if (interaction.isModalSubmit() && interaction.customId === MODAL_EMBED) {
         if (!interaction.deferred && !interaction.replied) {
           await interaction.deferReply({ flags: 1 << 6 });
         }
-
         const title = interaction.fields.getTextInputValue("title").trim();
         const message = interaction.fields.getTextInputValue("message").trim();
         const image = (interaction.fields.getTextInputValue("image") || "").trim();
-
         const embed = new EmbedBuilder()
           .setTitle(title)
           .setDescription(message.slice(0, 4096))
           .setColor(0x9b59b6)
           .setTimestamp()
           .setFooter({ text: "Make by Purple Shop" });
-
         let warn = "";
         if (image) {
           const isUrl = /^https?:\/\/\S{3,}/i.test(image);
           if (isUrl) embed.setImage(image);
           else warn = "⚠️ ลิงก์รูปภาพไม่ถูกต้อง จึงไม่ได้แนบรูปภาพ";
         }
-
         if (!interaction.channel?.send) {
           await interaction.editReply("❌ ไม่สามารถส่งในห้องนี้ได้");
           return;
         }
-
         await interaction.channel.send({ embeds: [embed] });
         await interaction.editReply(`✅ ส่ง Embed แล้ว${warn ? `\n${warn}` : ""}`);
         return;
