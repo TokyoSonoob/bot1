@@ -266,14 +266,11 @@ module.exports = (client) => {
       // ===== ปุ่ม: ปิดตั๋ว (ลบห้อง) =====
       if (interaction.isButton() && interaction.customId === BTN_CLOSE) {
         try {
-          if (!isAllowed(interaction.member)) {
-            await interaction.deferUpdate().catch(() => {});
-            return;
-          }
+          // 👇 ให้ทุกคนปิดห้องได้ (ไม่เช็ค isAllowed)
           await interaction.deferUpdate().catch(() => {});
           const channel = interaction.channel;
           if (channel && canManageChannel(interaction.guild, channel)) {
-            await channel.delete("Close ticket by button").catch(() => {});
+            await channel.delete("Close ticket by button (anyone)").catch(() => {});
           }
         } catch (e) {
           console.error("BTN_CLOSE error:", e);
