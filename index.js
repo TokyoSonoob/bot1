@@ -62,13 +62,17 @@ const BACKOFFICE_START_N    = 2;
 const CATEGORY_MAX_CHANNELS = 50;
 const BACKOFFICE_MAX_N      = 8;
 
-function isCategory(ch) { return ch?.type === 8; }
+function isCategory(ch) { return ch?.type === ChannelType.GuildCategory; }
 function childrenOf(guild, categoryId) {
   // คืน Array เรียงจากบนลงล่าง
   return guild.channels.cache
-    .filter(ch => ch.parentId === categoryId && (ch.type === 0 || ch.type === 5))
-    .sort((a,b) => (a.rawPosition ?? a.position) - (b.rawPosition ?? b.position))
-    .toJSON(); // สำคัญ: แปลงเป็น Array
+  .filter(ch =>
+    ch.parentId === categoryId &&
+    (ch.type === ChannelType.GuildText || ch.type === ChannelType.GuildAnnouncement)
+  )
+  .sort((a,b) => (a.rawPosition ?? a.position) - (b.rawPosition ?? b.position))
+  .toJSON();
+
 }
 function countChildren(guild, categoryId) {
   return childrenOf(guild, categoryId).length; // ใช้ length แทน size
@@ -104,7 +108,7 @@ async function ensureBackofficeChain(guild, { wantSlot=false } = {}) {
 
     if (!cat) {
       // ถ้าหาไม่เจอ ให้สร้างเฉพาะในกรอบ 2..MAX เท่านั้น
-      cat = await guild.channels.create({ name, type: 8 }).catch(() => null);
+      cat = await guild.channels.create({ name, type: ChannelType.GuildCategory });
       if (!cat) throw new Error(`create category "${name}" failed`);
       try { await cat.setPosition((lastCat.rawPosition ?? lastCat.position ?? 0) + 1); } catch {}
     } else {
@@ -444,7 +448,7 @@ async function openPublicAuctionForCurrentRoom(guild, recordLikeDoc, parentId) {
   const channelName = data.roomName || `ครั้งที่-${recordLikeDoc.id}`;
   const publicChannel = await guild.channels.create({
     name: channelName,
-    type: 0, // GuildText
+    type: ChannelType.GuildText,
     parent: parentId,
     permissionOverwrites: [
       {
