@@ -60,9 +60,9 @@ const BACKOFFICE_ROOT_NAME  = "หลังบ้านประมูล";
 const BACKOFFICE_BASE_NAME  = "หลังบ้านประมูล";
 const BACKOFFICE_START_N    = 2;
 const CATEGORY_MAX_CHANNELS = 50;
-const BACKOFFICE_MAX_N      = 4;
+const BACKOFFICE_MAX_N      = 8;
 
-function isCategory(ch) { return ch?.type === 4; }
+function isCategory(ch) { return ch?.type === 8; }
 function childrenOf(guild, categoryId) {
   // คืน Array เรียงจากบนลงล่าง
   return guild.channels.cache
@@ -97,14 +97,14 @@ async function ensureBackofficeChain(guild, { wantSlot=false } = {}) {
 
   let lastCat = root;
 
-  // เดินตั้งแต่ 2 → BACKOFFICE_MAX_N (เช่น 4)
+  // เดินตั้งแต่ 2 → BACKOFFICE_MAX_N (เช่น 8)
   for (let n = BACKOFFICE_START_N; n <= BACKOFFICE_MAX_N; n++) {
     const name = `${BACKOFFICE_BASE_NAME}${n}`;
     let cat = getCategoryByExactName(guild, name);
 
     if (!cat) {
       // ถ้าหาไม่เจอ ให้สร้างเฉพาะในกรอบ 2..MAX เท่านั้น
-      cat = await guild.channels.create({ name, type: 4 }).catch(() => null);
+      cat = await guild.channels.create({ name, type: 8 }).catch(() => null);
       if (!cat) throw new Error(`create category "${name}" failed`);
       try { await cat.setPosition((lastCat.rawPosition ?? lastCat.position ?? 0) + 1); } catch {}
     } else {
@@ -538,10 +538,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
   try {
     const parentId = await findOrCreateBackofficeSlot(interaction.guild);
 
-    // ⛔ เต็มทั้ง หลังบ้านประมูล2–4 → ไม่สร้างห้อง และแจ้งผู้ใช้
+    // ⛔ เต็มทั้ง หลังบ้านประมูล2–8 → ไม่สร้างห้อง และแจ้งผู้ใช้
     if (!parentId) {
       await interaction.editReply({
-        content: "❌ ขณะนี้หมวด **หลังบ้านประมูล2–4** เต็มทั้งหมดแล้ว (งดสร้างหมวดใหม่) กรุณารอแอดมินเคลียร์คิวหรือย้ายห้องก่อนนะครับ",
+        content: "❌ ขณะนี้หมวด **หลังบ้านประมูล2–8** เต็มทั้งหมดแล้ว (งดสร้างหมวดใหม่) กรุณารอแอดมินเคลียร์คิวหรือย้ายห้องก่อนนะครับ",
       });
       return;
     }
@@ -1024,3 +1024,4 @@ if (interaction.customId === "fill_info") {
 }
 });
 client.login(process.env.token);
+
