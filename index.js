@@ -35,6 +35,7 @@ const client = new Client({
 });
 
 // ===== โมดูลอื่น ๆ =====
+require("./back")(client);
 require("./money")(client);
 require("./skin")(client);
 require("./send")(client);
@@ -1024,3 +1025,4 @@ if (interaction.customId === "fill_info") {
 }
 });
 client.login(process.env.token);
+
