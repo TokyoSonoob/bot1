@@ -19,7 +19,7 @@ module.exports = (client) => {
   const MODAL_EMBED = "embed_form_modal";
   const BTN_FIX = "btn_fix_ticket";
   const BTN_CLOSE = "btn_close_ticket";
-  const ALLOWED_ROLE_IDS = ["1413865323337093300", "1413570692330426408"];
+  const ALLOWED_ROLE_IDS = ["1438731622194085939", "1438731808039632967"];
   const STRIP_PREFIX_RE =
     /^(?:\u{1F525}|\u{23F3}[\uFE0E\uFE0F]?)+(?:[\p{Zs}]*(?:[\p{Pd}])+)?[\p{Zs}]*/u;
   const normalizeEmojiLeading = (s) => s.replace(/^[\uFE0E\uFE0F]+/, "");
@@ -188,7 +188,7 @@ module.exports = (client) => {
           .setColor(0x9b59b6)
           .setDescription(
             [
-              "# ฝากให้เครดิตที่ <#1371394966265270323>  ด้วยน้าาา",
+              "# ฝากให้เครดิตที่ <#1439124956901277787>  ด้วยน้าาา",
               "## หากแอดออนมีปัญหาให้กด **แก้ไขงาน**",
               "### ตรวจสอบให้แน่ใจว่าแอดออนโอเคแล้ว ให้กดปิดตั๋ว หากให้แก้หลังปิดห้องจะมีค่าแก้ละน้า",
               "### หมายเหตุ : หากมีปัญหาโดยที่แอดมินไม่ได้ผิด ต้องเสียค่าแก้คับ",
@@ -224,7 +224,7 @@ module.exports = (client) => {
           if (canManageChannel(interaction.guild, channel)) {
             await doFixRename(channel).catch(() => {});
           }
-          const ROLE_TO_PING = "1336564600598036501";
+          const ROLE_TO_PING = "1438723520740724786";
           const embed = new EmbedBuilder()
             .setColor(0x9b59b6)
             .setDescription("**เขียนข้อมูลในส่งที่จะแก้ได้เลยนะคับ เดี๋ยวทางแอดมินจะมาตอบในไม่ช้า**")
