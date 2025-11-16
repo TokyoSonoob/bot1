@@ -110,7 +110,9 @@ async function safeReply(interaction, payload = {}, isEphemeral = true) {
   return interaction.followUp({ ...opts, ephemeral: !!isEphemeral });
 }
 
-function keyOf(userId, channelId) { return `${userId}-${channelId}`; }
+function keyOf(userId, channelId) {
+  return `${userId}-${channelId}`;
+}
 function ensureDyn(k) {
   if (!dynamicState.get(k)) {
     dynamicState.set(k, { bangsQty: null, bangsBringOwn: false, bangsMoveQty: null, buffQty: null, buffNotes: "" });
@@ -130,8 +132,12 @@ function initState(userId, channelId, mode) {
   formCompleted.set(channelId, false);
   return k;
 }
-function setSubtotal(k, val) { userTotals.set(k, Math.max(0, Number(val) || 0)); }
-function setDetails(k, lines) { userDetails.set(k, Array.isArray(lines) ? lines : []); }
+function setSubtotal(k, val) {
+  userTotals.set(k, Math.max(0, Number(val) || 0));
+}
+function setDetails(k, lines) {
+  userDetails.set(k, Array.isArray(lines) ? lines : []);
+}
 
 function standardOptionsAsSelectOptions() {
   const opts = [];
@@ -193,10 +199,7 @@ function optionEmbed() {
   return new EmbedBuilder().setTitle("สิ่งที่ต้องการ").setDescription("เลือกออฟชั่นที่คุณต้องการในงานนี้ หรือกด 'ไม่มีออฟชั่น'").setColor(0x9b59b6);
 }
 function optionComponents() {
-  const noOptionButton = new ButtonBuilder()
-    .setCustomId("no_options")
-    .setLabel("ไม่มีออฟชั่น")
-    .setStyle(ButtonStyle.Secondary);
+  const noOptionButton = new ButtonBuilder().setCustomId("no_options").setLabel("ไม่มีออฟชั่น").setStyle(ButtonStyle.Secondary);
 
   const ALL_FEATURE_COUNT = Object.keys(labels).length;
   const selectMenu = new StringSelectMenuBuilder()
@@ -206,17 +209,11 @@ function optionComponents() {
     .setMaxValues(ALL_FEATURE_COUNT)
     .addOptions(...standardOptionsAsSelectOptions());
 
-  return [
-    new ActionRowBuilder().addComponents(selectMenu),
-    new ActionRowBuilder().addComponents(noOptionButton),
-  ];
+  return [new ActionRowBuilder().addComponents(selectMenu), new ActionRowBuilder().addComponents(noOptionButton)];
 }
 
 function figuraOptionEmbed() {
-  return new EmbedBuilder()
-    .setTitle("เลือกออฟชั่นฟิกุร่า (Figura)")
-    .setDescription("เลือกได้หลายอัน แล้วกดปุ่มเลือกระดับสิทธิ์ด้านล่าง")
-    .setColor(0x9b59b6);
+  return new EmbedBuilder().setTitle("เลือกออฟชั่นฟิกุร่า (Figura)").setDescription("เลือกได้หลายอัน แล้วกดปุ่มเลือกระดับสิทธิ์ด้านล่าง").setColor(0x9b59b6);
 }
 function figuraOptionComponents() {
   const select = new StringSelectMenuBuilder()
@@ -234,7 +231,6 @@ function figuraOptionComponents() {
 }
 
 async function postOrReplaceSummary(interaction) {
-  // อ้างอิงคีย์ของเจ้าของห้องเพื่อความคงที่ของ state
   const ownerId = channelOwner.get(interaction.channel.id) || interaction.user.id;
   const k = keyOf(ownerId, interaction.channel.id);
   const mode = ticketModes.get(k) || "standard";
@@ -244,16 +240,14 @@ async function postOrReplaceSummary(interaction) {
   const needForm = formRequired.get(interaction.channel.id) === true;
   const doneForm = formCompleted.get(interaction.channel.id) === true;
 
-  const components = (!needForm || doneForm)
-    ? []
-    : [
-        new ActionRowBuilder().addComponents(
-          new ButtonBuilder()
-            .setCustomId("open_skin_form")
-            .setLabel("กรอกข้อมูลเพิ่มเติม")
-            .setStyle(ButtonStyle.Primary)
-        )
-      ];
+  const components =
+    !needForm || doneForm
+      ? []
+      : [
+          new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId("open_skin_form").setLabel("กรอกข้อมูลเพิ่มเติม").setStyle(ButtonStyle.Primary)
+          ),
+        ];
 
   if (mode === "figura") {
     const lines = [];
@@ -303,7 +297,7 @@ async function postOrReplaceSummary(interaction) {
   }
   if (mode === "standard") lines.push(`**• ค่าแอดออน: ${ADDON_BASE_PRICE} บาท**`);
   const total = computeTotal(k);
-  lines.push(`\n**รวมราคา: ${total} บาท**`, "## โอนเงินได้ที่");
+  lines.push(`\n**รวมราคา: ${total} บาท**`,`## โอนเงินได้ที่`);
 
   const old = summaryMessages.get(k);
   if (old && old.deletable) await old.delete().catch(() => {});
@@ -358,13 +352,13 @@ module.exports = function (client) {
       const embed = new EmbedBuilder()
         .setDescription(
           "# สั่งงานแอดออน \n# โมเดล ฟิกุร่า\n" +
-          "     **✩.･*:｡≻───── ⋆♡⋆ ─────.•*:｡✩\n\n" +
-          "# <a:excited_kawaii_roach:1421742948630134855> ตั๋วสั่งแอดออน <a:Catpls:1421734047381721141>\n" +
-          " <a:emoji_5:1421733862601654374> [แอดออนสกินดูเรทราคาได้ที่นี่เลอ](https://discordapp.com/channels/1336555551970164839/1418840494108180602)\n" +
-          " <a:emoji_5:1421733862601654374> รวมแอดออนสกิน \n        สกินละ10บาทสนใจกดตั๋วเลย\n" +
-          " <a:emoji_5:1421733862601654374> จ่ายเงินครบก่อนถึงจะเริ่มงานนะคับ\n" +
-          " <a:emoji_5:1421733862601654374> งานจะเสร็จภายใน 1-3 วันน้าาา\n\n" +
-          "               ─── ･ ｡ﾟ☆: *.☽ .* :☆ﾟ. ───**"
+            "     **✩.･*:｡≻───── ⋆♡⋆ ─────.•*:｡✩\n\n" +
+            "# <a:excited_kawaii_roach:1421742948630134855> ตั๋วสั่งแอดออน <a:Catpls:1421734047381721141>\n" +
+            " <a:emoji_5:1421733862601654374> [แอดออนสกินดูเรทราคาได้ที่นี่เลอ](https://discordapp.com/channels/1336555551970164839/1418840494108180602)\n" +
+            " <a:emoji_5:1421733862601654374> รวมแอดออนสกิน \n        สกินละ10บาทสนใจกดตั๋วเลย\n" +
+            " <a:emoji_5:1421733862601654374> จ่ายเงินครบก่อนถึงจะเริ่มงานนะคับ\n" +
+            " <a:emoji_5:1421733862601654374> งานจะเสร็จภายใน 1-3 วันน้าาา\n\n" +
+            "               ─── ･ ｡ﾟ☆: *.☽ .* :☆ﾟ. ───**"
         )
         .setColor(0x9b59b6)
         .setImage("https://giffiles.alphacoders.com/220/220120.gif")
@@ -390,8 +384,11 @@ module.exports = function (client) {
       const guildId = interaction.guild.id;
       const settingsDoc = await db.doc(`ticket_settings/${guildId}`).get();
       const parentCategoryId =
-        (mode === "sculpt" || mode === "figura") ? MODEL_CATEGORY_ID :
-        (settingsDoc.exists && settingsDoc.data().categoryId) ? settingsDoc.data().categoryId : null;
+        mode === "sculpt" || mode === "figura"
+          ? MODEL_CATEGORY_ID
+          : settingsDoc.exists && settingsDoc.data().categoryId
+          ? settingsDoc.data().categoryId
+          : null;
 
       await ensureDeferred(interaction, true);
       if (!parentCategoryId) {
@@ -406,25 +403,31 @@ module.exports = function (client) {
       const parentCategory = check.cat;
 
       const channelName =
-        mode === "sculpt" ? `🔥-𝕄𝕠𝕕𝕖𝕝_${interaction.user.username}` :
-        mode === "figura" ? `🔥-𝔽𝕚𝕘𝕦𝕣𝕒_${interaction.user.username}` :
-                            `🔥-𝕋𝕚𝕔𝕜𝕖𝕕𝕥_${interaction.user.username}`.replace("𝕕", "k");
-
-      const overwrites = [
-        { id: interaction.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
-        { id: interaction.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages] },
-        { id: client.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ManageChannels] },
-      ];
-      if (mode === "sculpt" || mode === "figura") {
-        overwrites.push({ id: MODEL_ROLE_ID, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages] });
-      }
+        mode === "sculpt"
+          ? `🔥-𝕄𝕠𝕕𝕖𝕝_${interaction.user.username}`
+          : mode === "figura"
+          ? `🔥-𝔽𝕚𝕘𝕦𝕣𝕒_${interaction.user.username}`
+          : `🔥-𝕋𝕚𝕔𝕜𝕖𝕕𝕥_${interaction.user.username}`.replace("𝕕", "k");
 
       const channel = await interaction.guild.channels.create({
         name: channelName,
         type: ChannelType.GuildText,
         parent: parentCategory.id,
-        permissionOverwrites: overwrites,
       });
+
+      await channel.permissionOverwrites
+        .edit(interaction.user.id, {
+          ViewChannel: true,
+          SendMessages: true,
+        })
+        .catch(() => {});
+      await channel.permissionOverwrites
+        .edit(client.user.id, {
+          ViewChannel: true,
+          SendMessages: true,
+          ManageChannels: true,
+        })
+        .catch(() => {});
 
       initState(interaction.user.id, channel.id, mode);
 
@@ -432,13 +435,16 @@ module.exports = function (client) {
         new ButtonBuilder().setCustomId("close_ticket").setLabel("ปิดตั๋ว").setStyle(ButtonStyle.Danger),
         new ButtonBuilder().setCustomId("upgrade_priority").setLabel("อัปเป็นคิวเร่ง").setStyle(ButtonStyle.Danger)
       );
-      const contentTag = (mode === "sculpt" || mode === "figura") ? `<@${interaction.user.id}> <@&${MODEL_ROLE_ID}>` : `<@${interaction.user.id}>`;
+      const contentTag =
+        mode === "sculpt" || mode === "figura" ? `<@${interaction.user.id}> <@&${MODEL_ROLE_ID}>` : `<@${interaction.user.id}>`;
       const openEmbed = new EmbedBuilder().setTitle("ขอบคุณที่ไว้ใจร้านเรา").setDescription("กรอก/แจ้งข้อมูลที่ด้านล่างได้เลยนะคับ").setColor(0x9b59b6);
       await channel.send({ content: contentTag, embeds: [openEmbed], components: [controlRow] });
 
       if (mode === "bundle") {
         const embed = new EmbedBuilder().setTitle("รวมแอดออนสกิน").setDescription("**กดปุ่มเพื่อกรอกจำนวนแอดออนที่จะรวม ( 10 บาท / ชิ้น )**").setColor(0x9b59b6);
-        const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("open_bundle_modal").setLabel("กรอกจำนวนแอดออน").setStyle(ButtonStyle.Primary));
+        const row = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId("open_bundle_modal").setLabel("กรอกจำนวนแอดออน").setStyle(ButtonStyle.Primary)
+        );
         await channel.send({ embeds: [embed], components: [row] });
       }
       if (mode === "preset") {
@@ -457,7 +463,10 @@ module.exports = function (client) {
         await channel.send({ embeds: [embed], components: [row] });
       }
       if (mode === "sculpt") {
-        const embed = new EmbedBuilder().setTitle("สั่งงานปั้นโมเดล").setDescription(["หากมีรูปให้ส่งรูปที่ต้องการมาได้เลยน้าา", "รอแอดมินมาประเมินราคาและระยะเวลาให้น้าา💜"].join("\n")).setColor(0x9b59b6);
+        const embed = new EmbedBuilder()
+          .setTitle("สั่งงานปั้นโมเดล")
+          .setDescription(["หากมีรูปให้ส่งรูปที่ต้องการมาได้เลยน้าา", "รอแอดมินมาประเมินราคาและระยะเวลาให้น้าา💜"].join("\n"))
+          .setColor(0x9b59b6);
         await channel.send({ embeds: [embed] });
       }
       if (mode === "figura") {
@@ -467,7 +476,10 @@ module.exports = function (client) {
       await interaction.editReply(`✅ เปิดตั๋วให้แล้ว : ${channel}`);
       return channel;
     } catch (err) {
-      try { await ensureDeferred(interaction, true); await interaction.editReply("❌ เกิดข้อผิดพลาดในการสร้างห้อง"); } catch {}
+      try {
+        await ensureDeferred(interaction, true);
+        await interaction.editReply("❌ เกิดข้อผิดพลาดในการสร้างห้อง");
+      } catch {}
       console.error("createTicketChannel error:", err);
       return null;
     }
@@ -503,9 +515,13 @@ module.exports = function (client) {
         ) {
           await ensureDeferred(interaction, true);
           const mode =
-            interaction.customId === "create_ticket_bundle" ? "bundle" :
-            interaction.customId === "create_ticket_preset" ? "preset" :
-            interaction.customId === "create_ticket_figura" ? "figura" : "sculpt";
+            interaction.customId === "create_ticket_bundle"
+              ? "bundle"
+              : interaction.customId === "create_ticket_preset"
+              ? "preset"
+              : interaction.customId === "create_ticket_figura"
+              ? "figura"
+              : "sculpt";
           await createTicketChannel(interaction, mode);
           return;
         }
@@ -526,11 +542,9 @@ module.exports = function (client) {
             return safeReply(interaction, { content: "❌ เฉพาะแอดมินเท่านั้นที่อัปเป็นคิวเร่งได้" }, true);
           }
           const oldName = interaction.channel.name || "";
-          // หากมี "🔥🔥" ตรงไหนก็ได้ในชื่อ ให้ถือว่าเป็นคิวเร่งอยู่แล้ว
           if (oldName.includes("🔥🔥")) {
             return safeReply(interaction, { content: "✅ ห้องนี้เป็นคิวเร่งอยู่แล้ว" }, true);
           }
-          // ตัดไฟที่ขึ้นต้นและตัวคั่นออก (ถ้ามี) แล้วเติม "🔥🔥-" ข้างหน้า
           const core = oldName.replace(/^🔥+[-_ ]?/, "");
           const newName = `🔥🔥-${core}`;
           try {
@@ -543,16 +557,21 @@ module.exports = function (client) {
 
         if (interaction.customId === "open_bundle_modal") {
           const modal = new ModalBuilder().setCustomId("bundle_modal").setTitle("รวมแอดออนสกิน");
-          const qty = new TextInputBuilder().setCustomId("bundle_count").setLabel("จำนวนแอดออนที่จะรวม (ตัวเลข)").setPlaceholder("เช่น 12").setStyle(TextInputStyle.Short).setRequired(true).setMinLength(1).setMaxLength(4);
+          const qty = new TextInputBuilder()
+            .setCustomId("bundle_count")
+            .setLabel("จำนวนแอดออนที่จะรวม (ตัวเลข)")
+            .setPlaceholder("เช่น 12")
+            .setStyle(TextInputStyle.Short)
+            .setRequired(true)
+            .setMinLength(1)
+            .setMaxLength(4);
           modal.addComponents(new ActionRowBuilder().addComponents(qty));
           await interaction.showModal(modal);
           return;
         }
 
         if (interaction.customId === "open_skin_form") {
-          const modal = new ModalBuilder()
-            .setCustomId("skin_order_form")
-            .setTitle("กรอกข้อมูลเพิ่มเติม");
+          const modal = new ModalBuilder().setCustomId("skin_order_form").setTitle("กรอกข้อมูลเพิ่มเติม");
 
           const xbox = new TextInputBuilder()
             .setCustomId("xbox_name")
@@ -585,54 +604,60 @@ module.exports = function (client) {
           return;
         }
         if (interaction.customId === "edit_skin_form") {
-  const k = keyOf(interaction.user.id, interaction.channel.id);
-  const last = formData.get(k) || { xboxName: "", lockOption: "", slot: "" };
+          const k = keyOf(interaction.user.id, interaction.channel.id);
+          const last = formData.get(k) || { xboxName: "", lockOption: "", slot: "" };
 
-  const modal = new ModalBuilder()
-    .setCustomId("skin_order_form")
-    .setTitle("แก้ไขข้อมูลเพิ่มเติม");
+          const modal = new ModalBuilder().setCustomId("skin_order_form").setTitle("แก้ไขข้อมูลเพิ่มเติม");
 
-  const xbox = new TextInputBuilder()
-    .setCustomId("xbox_name")
-    .setLabel("ชื่อXbox (ถูกต้อง100%)")
-    .setStyle(TextInputStyle.Short)
-    .setRequired(false)
-    .setPlaceholder("ถ้าแบบ Seamuww#3749 ให้ลบ#ออก")
-    .setValue(last.xboxName || "");
+          const xbox = new TextInputBuilder()
+            .setCustomId("xbox_name")
+            .setLabel("ชื่อXbox (ถูกต้อง100%)")
+            .setStyle(TextInputStyle.Short)
+            .setRequired(false)
+            .setPlaceholder("ถ้าแบบ Seamuww#3749 ให้ลบ#ออก")
+            .setValue(last.xboxName || "");
 
-  const lock = new TextInputBuilder()
-    .setCustomId("lock_option")
-    .setLabel("ล็อกให้ใช้ได้คนเดียวไหม")
-    .setStyle(TextInputStyle.Short)
-    .setRequired(false)
-    .setPlaceholder("เช่น ล็อก / ไม่ล็อก")
-    .setValue(last.lockOption || "");
+          const lock = new TextInputBuilder()
+            .setCustomId("lock_option")
+            .setLabel("ล็อกให้ใช้ได้คนเดียวไหม")
+            .setStyle(TextInputStyle.Short)
+            .setRequired(false)
+            .setPlaceholder("เช่น ล็อก / ไม่ล็อก")
+            .setValue(last.lockOption || "");
 
-  const slot = new TextInputBuilder()
-    .setCustomId("slot")
-    .setLabel("ช่องที่ใส่ (หมวก,เกราะ,กางเกง,รองเท้า)")
-    .setStyle(TextInputStyle.Short)
-    .setRequired(false)
-    .setPlaceholder("เช่น หมวก")
-    .setValue(last.slot || "");
+          const slot = new TextInputBuilder()
+            .setCustomId("slot")
+            .setLabel("ช่องที่ใส่ (หมวก,เกราะ,กางเกง,รองเท้า)")
+            .setStyle(TextInputStyle.Short)
+            .setRequired(false)
+            .setPlaceholder("เช่น หมวก")
+            .setValue(last.slot || "");
 
-  modal.addComponents(
-    new ActionRowBuilder().addComponents(xbox),
-    new ActionRowBuilder().addComponents(lock),
-    new ActionRowBuilder().addComponents(slot)
-  );
+          modal.addComponents(
+            new ActionRowBuilder().addComponents(xbox),
+            new ActionRowBuilder().addComponents(lock),
+            new ActionRowBuilder().addComponents(slot)
+          );
 
-  await interaction.showModal(modal);
-  return;
-}
+          await interaction.showModal(modal);
+          return;
+        }
 
-
-        if (interaction.customId === "fig_rights_normal" || interaction.customId === "fig_rights_plus50" || interaction.customId === "fig_rights_x2") {
+        if (
+          interaction.customId === "fig_rights_normal" ||
+          interaction.customId === "fig_rights_plus50" ||
+          interaction.customId === "fig_rights_x2"
+        ) {
           const ownerId = channelOwner.get(interaction.channel.id) || interaction.user.id;
           const k = keyOf(ownerId, interaction.channel.id);
           if ((ticketModes.get(k) || "") !== "figura") return safeReply(interaction, { content: "โปรดเลือกสิ่งที่ต้องการก่อน" }, true);
-          try { await interaction.deferUpdate(); } catch {}
-          figuraRights.set(k, interaction.customId === "fig_rights_plus50" ? "plus50" : interaction.customId === "fig_rights_x2" ? "x2" : "normal");
+          try {
+            await interaction.deferUpdate();
+          } catch {}
+          figuraRights.set(
+            k,
+            interaction.customId === "fig_rights_plus50" ? "plus50" : interaction.customId === "fig_rights_x2" ? "x2" : "normal"
+          );
           await postOrReplaceSummary(interaction);
           return;
         }
@@ -650,7 +675,9 @@ module.exports = function (client) {
           dynamicState.set(k, { bangsQty: null, bangsBringOwn: false, bangsMoveQty: null, buffQty: null, buffNotes: "" });
 
           await postOrReplaceSummary(interaction);
-          try { await interaction.deferUpdate(); } catch {}
+          try {
+            await interaction.deferUpdate();
+          } catch {}
         }
       }
 
@@ -674,7 +701,6 @@ module.exports = function (client) {
             await interaction.editReply(`✅ เปิดตั๋วให้แล้ว : ${chan}`);
             return;
           } else {
-            // หลายชิ้น: ไม่ต้องกรอกในห้องหลัก
             formRequired.set(chan.id, false);
           }
 
@@ -710,9 +736,11 @@ module.exports = function (client) {
 
         if (interaction.customId === "bundle_modal") {
           const raw = (interaction.fields.getTextInputValue("bundle_count") || "").trim();
-          if (!/^\d{1,4}$/.test(raw)) return safeReply(interaction, { content: "❌ กรุณากรอกจำนวนเป็นตัวเลขจำนวนเต็ม 0-9999" }, true);
+          if (!/^\d{1,4}$/.test(raw))
+            return safeReply(interaction, { content: "❌ กรุณากรอกจำนวนเป็นตัวเลขจำนวนเต็ม 0-9999" }, true);
           const n = parseInt(raw, 10);
-          if (!Number.isFinite(n) || n < 0) return safeReply(interaction, { content: "❌ กรุณากรอกจำนวนเป็นตัวเลขจำนวนเต็มตั้งแต่ 0 ขึ้นไป" }, true);
+          if (!Number.isFinite(n) || n < 0)
+            return safeReply(interaction, { content: "❌ กรุณากรอกจำนวนเป็นตัวเลขจำนวนเต็มตั้งแต่ 0 ขึ้นไป" }, true);
           const addPrice = n * 10;
           const k = keyOf(interaction.user.id, interaction.channel.id);
           ticketModes.set(k, "bundle");
@@ -726,38 +754,36 @@ module.exports = function (client) {
         }
 
         if (interaction.customId === "skin_order_form") {
-  const xboxName  = interaction.fields.getTextInputValue("xbox_name")  || "";
-  const lockOption = interaction.fields.getTextInputValue("lock_option") || "";
-  const slot      = interaction.fields.getTextInputValue("slot")       || "";
+          const xboxName = interaction.fields.getTextInputValue("xbox_name") || "";
+          const lockOption = interaction.fields.getTextInputValue("lock_option") || "";
+          const slot = interaction.fields.getTextInputValue("slot") || "";
 
-  const k = keyOf(interaction.user.id, interaction.channel.id);
-  formData.set(k, { xboxName, lockOption, slot });
+          const k = keyOf(interaction.user.id, interaction.channel.id);
+          formData.set(k, { xboxName, lockOption, slot });
 
-  const oldMsg = formMessages.get(k);
-  if (oldMsg && oldMsg.deletable) await oldMsg.delete().catch(() => {});
-  const editRow = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId("edit_skin_form")
-      .setLabel("แก้ไข")
-      .setStyle(ButtonStyle.Secondary)
-  );
+          const oldMsg = formMessages.get(k);
+          if (oldMsg && oldMsg.deletable) await oldMsg.delete().catch(() => {});
+          const editRow = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId("edit_skin_form").setLabel("แก้ไข").setStyle(ButtonStyle.Secondary)
+          );
 
-  const newMsg = await interaction.channel.send({
-    content:
-      `<@${interaction.user.id}>\n\n` +
-      `## ชื่อ Xbox : \`${xboxName}\`\n` +
-      `## ล็อกให้ใช้ได้คนเดียวไหม : ${lockOption}\n` +
-      `## ช่องที่ใส่ : ${slot}`,
-    components: [editRow],
-  });
-  formMessages.set(k, newMsg);
+          const newMsg = await interaction.channel.send({
+            content:
+              `<@${interaction.user.id}>\n\n` +
+              `## ชื่อ Xbox : \`${xboxName}\`\n` +
+              `## ล็อกให้ใช้ได้คนเดียวไหม : ${lockOption}\n` +
+              `## ช่องที่ใส่ : ${slot}`,
+            components: [editRow],
+          });
+          formMessages.set(k, newMsg);
 
-  formCompleted.set(interaction.channel.id, true);
-  await postOrReplaceSummary(interaction);
-  try { await interaction.deferUpdate(); } catch {}
-  return;
-}
-
+          formCompleted.set(interaction.channel.id, true);
+          await postOrReplaceSummary(interaction);
+          try {
+            await interaction.deferUpdate();
+          } catch {}
+          return;
+        }
 
         if (interaction.customId === "details_modal") {
           const ownerId = channelOwner.get(interaction.channel.id) || interaction.user.id;
@@ -767,23 +793,31 @@ module.exports = function (client) {
 
           if (set.has("bangs")) {
             const raw = (interaction.fields.getTextInputValue("bangs_qty_or_own") || "").trim().toLowerCase();
-            if (!raw || raw === "own") { dyn.bangsBringOwn = true; dyn.bangsQty = null; }
-            else if (/^\d+$/.test(raw)) { dyn.bangsBringOwn = false; dyn.bangsQty = parseInt(raw, 10); }
-            else return safeReply(interaction, { content: "❌ ปอยผม: กรอกตัวเลข หรือพิมพ์ own" }, true);
+            if (!raw || raw === "own") {
+              dyn.bangsBringOwn = true;
+              dyn.bangsQty = null;
+            } else if (/^\d+$/.test(raw)) {
+              dyn.bangsBringOwn = false;
+              dyn.bangsQty = parseInt(raw, 10);
+            } else return safeReply(interaction, { content: "❌ ปอยผม: กรอกตัวเลข หรือพิมพ์ own" }, true);
           }
           if (set.has("bangs_move")) {
             const raw = (interaction.fields.getTextInputValue("bangs_move_qty") || "").trim();
-            if (!/^\d+$/.test(raw)) return safeReply(interaction, { content: "❌ ปอยผมขยับ: กรุณากรอกจำนวนเป็นเลขจำนวนเต็ม" }, true);
+            if (!/^\d+$/.test(raw))
+              return safeReply(interaction, { content: "❌ ปอยผมขยับ: กรุณากรอกจำนวนเป็นเลขจำนวนเต็ม" }, true);
             ensureDyn(k).bangsMoveQty = parseInt(raw, 10);
           }
           if (set.has("buff")) {
             const rawQ = (interaction.fields.getTextInputValue("buff_qty") || "0").trim();
-            if (!/^\d+$/.test(rawQ)) return safeReply(interaction, { content: "❌ บัฟ: กรุณากรอกจำนวนเป็นเลขจำนวนเต็ม" }, true);
+            if (!/^\d+$/.test(rawQ))
+              return safeReply(interaction, { content: "❌ บัฟ: กรุณากรอกจำนวนเป็นเลขจำนวนเต็ม" }, true);
             ensureDyn(k).buffQty = parseInt(rawQ, 10);
             ensureDyn(k).buffNotes = (interaction.fields.getTextInputValue("buff_notes") || "").trim();
           }
           await postOrReplaceSummary(interaction);
-          try { await interaction.deferUpdate(); } catch {}
+          try {
+            await interaction.deferUpdate();
+          } catch {}
           return;
         }
       }
@@ -812,19 +846,47 @@ module.exports = function (client) {
           if (needBangs || needMove || needBuff) {
             const modal = new ModalBuilder().setCustomId("details_modal").setTitle("กรอกรายละเอียดแอดออน");
             if (needBangs) {
-              modal.addComponents(new ActionRowBuilder().addComponents(
-                new TextInputBuilder().setCustomId("bangs_qty_or_own").setLabel("ปอยผม: จำนวนจุด หรือพิมพ์ own = นำมาเอง").setStyle(TextInputStyle.Short).setRequired(false).setPlaceholder("เช่น 3 หรือ own")
-              ));
+              modal.addComponents(
+                new ActionRowBuilder().addComponents(
+                  new TextInputBuilder()
+                    .setCustomId("bangs_qty_or_own")
+                    .setLabel("ปอยผม: จำนวนจุด หรือพิมพ์ own = นำมาเอง")
+                    .setStyle(TextInputStyle.Short)
+                    .setRequired(false)
+                    .setPlaceholder("เช่น 3 หรือ own")
+                )
+              );
             }
             if (needMove) {
-              modal.addComponents(new ActionRowBuilder().addComponents(
-                new TextInputBuilder().setCustomId("bangs_move_qty").setLabel("ปอยผมขยับ: จำนวนจุด (ตัวเลข)").setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder("เช่น 2")
-              ));
+              modal.addComponents(
+                new ActionRowBuilder().addComponents(
+                  new TextInputBuilder()
+                    .setCustomId("bangs_move_qty")
+                    .setLabel("ปอยผมขยับ: จำนวนจุด (ตัวเลข)")
+                    .setStyle(TextInputStyle.Short)
+                    .setRequired(true)
+                    .setPlaceholder("เช่น 2")
+                )
+              );
             }
             if (needBuff) {
               modal.addComponents(
-                new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("buff_qty").setLabel("เอฟเฟก/บัฟ: จำนวน (ตัวเลข)").setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder("เช่น 2")),
-                new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("buff_notes").setLabel("รายละเอียดบัฟ (ถ้ามี)").setStyle(TextInputStyle.Paragraph).setRequired(false).setPlaceholder("พิมพ์ได้หลายบรรทัด"))
+                new ActionRowBuilder().addComponents(
+                  new TextInputBuilder()
+                    .setCustomId("buff_qty")
+                    .setLabel("เอฟเฟก/บัฟ: จำนวน (ตัวเลข)")
+                    .setStyle(TextInputStyle.Short)
+                    .setRequired(true)
+                    .setPlaceholder("เช่น 2")
+                ),
+                new ActionRowBuilder().addComponents(
+                  new TextInputBuilder()
+                    .setCustomId("buff_notes")
+                    .setLabel("รายละเอียดบัฟ (ถ้ามี)")
+                    .setStyle(TextInputStyle.Paragraph)
+                    .setRequired(false)
+                    .setPlaceholder("พิมพ์ได้หลายบรรทัด")
+                )
               );
             }
             await interaction.showModal(modal);
@@ -865,7 +927,10 @@ module.exports = function (client) {
           let subtotal = 0;
           for (const v of interaction.values) {
             const p = table[v];
-            if (p) { lines.push(`**• ${p.name}: ${p.price} บาท**`); subtotal += p.price; }
+            if (p) {
+              lines.push(`**• ${p.name}: ${p.price} บาท**`);
+              subtotal += p.price;
+            }
           }
           const k = keyOf(interaction.user.id, interaction.channel.id);
           ticketModes.set(k, "preset");
@@ -873,7 +938,9 @@ module.exports = function (client) {
           setDetails(k, lines);
           setSubtotal(k, subtotal);
           await postOrReplaceSummary(interaction);
-          try { await interaction.deferUpdate(); } catch {}
+          try {
+            await interaction.deferUpdate();
+          } catch {}
           return;
         }
       }
