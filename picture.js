@@ -1,6 +1,6 @@
 // picture.js
-const { EmbedBuilder } = require("discord.js");
 const express = require("express");
+const { EmbedBuilder } = require("discord.js");
 const multer = require("multer");
 const crypto = require("crypto");
 
@@ -12,12 +12,23 @@ const upload = multer({
   limits: { fileSize: 8 * 1024 * 1024 },
 });
 
-module.exports = function (client) {
-  // กันไม่ให้ไฟล์นี้รันซ้ำ
+module.exports = function (client, app, baseUrlFromIndex) {
   if (client.pictureUploadInitialized) return;
   client.pictureUploadInitialized = true;
 
-  // ---------- สมัคร slash command /p ----------
+  if (!app) {
+    throw new Error("picture.js ต้องถูกเรียกด้วย Express app: require('./picture')(client, app, baseUrl)");
+  }
+
+  const sessions = new Map();
+
+  const resolvedBaseUrl =
+    (baseUrlFromIndex && baseUrlFromIndex.replace(/\/+$/, "")) ||
+    (process.env.P_BASE_URL && process.env.P_BASE_URL.replace(/\/+$/, "")) ||
+    (process.env.RENDER_EXTERNAL_URL &&
+      process.env.RENDER_EXTERNAL_URL.replace(/\/+$/, "")) ||
+    "http://localhost:3000";
+
   client.once("ready", async () => {
     try {
       if (!client.application) return;
@@ -34,20 +45,9 @@ module.exports = function (client) {
       console.error("Register /p command error:", err);
     }
   });
-  // --------------------------------------------
-
-  const app = express();
-  const port = process.env.P_PORT || 3100;
-  const baseUrl = (process.env.P_BASE_URL || `http://localhost:${port}`).replace(
-    /\/+$/,
-    ""
-  );
-
-  const sessions = new Map();
 
   app.use(express.urlencoded({ extended: true }));
 
-  // ---------- หน้าแรก มีปุ่มเดียวให้กดอัปโหลด ----------
   app.get("/p/:id", (req, res) => {
     const id = req.params.id;
     const session = sessions.get(id);
@@ -66,49 +66,63 @@ module.exports = function (client) {
   * { box-sizing: border-box; }
   body {
     font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    background: radial-gradient(circle at top, #2d0050 0, #050014 60%, #000 100%);
+    background: radial-gradient(circle at top, #3b0066 0, #0a0018 60%, #000 100%);
     color: #fff;
     display: flex;
     align-items: center;
     justify-content: center;
     min-height: 100vh;
     margin: 0;
+    animation: bgPulse 6s ease-in-out infinite;
+  }
+  @keyframes bgPulse {
+    0%,100% { filter: brightness(1); }
+    50% { filter: brightness(1.25); }
   }
   .card {
-    background: rgba(10, 10, 25, 0.9);
-    border-radius: 22px;
-    padding: 28px 32px;
-    box-shadow: 0 0 28px rgba(151, 71, 255, 0.55);
-    max-width: 360px;
+    background: rgba(20, 10, 35, 0.85);
+    border-radius: 26px;
+    padding: 32px 36px;
+    box-shadow: 0 0 40px rgba(151, 71, 255, 0.85), 0 0 70px rgba(151, 71, 255, 0.35);
+    max-width: 380px;
     width: 100%;
     text-align: center;
+    animation: float 3.5s ease-in-out infinite;
+  }
+  @keyframes float {
+    0%,100% { transform: translateY(0px); }
+    50% { transform: translateY(-10px); }
   }
   h1 {
-    font-size: 20px;
-    margin-bottom: 18px;
+    font-size: 22px;
+    margin-bottom: 16px;
+    letter-spacing: 0.5px;
   }
-  .hidden-input {
-    display: none;
-  }
+  .hidden-input { display: none; }
   .upload-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 8px;
-    padding: 12px 26px;
+    padding: 14px 32px;
     border-radius: 999px;
     border: none;
-    font-size: 16px;
+    font-size: 17px;
     cursor: pointer;
     background: linear-gradient(135deg, #a855f7, #ec4899);
     color: #fff;
-    box-shadow: 0 0 18px rgba(236, 72, 153, 0.6);
+    box-shadow: 0 0 25px rgba(236, 72, 153, 0.8), 0 0 45px rgba(168, 85, 247, 0.5);
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%,100% { transform: scale(1); }
+    50% { transform: scale(1.07); }
   }
   .upload-btn:active {
-    transform: scale(0.97);
+    transform: scale(0.95);
   }
   .note {
-    margin-top: 14px;
+    margin-top: 16px;
     font-size: 12px;
     opacity: 0.7;
   }
@@ -147,9 +161,7 @@ module.exports = function (client) {
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.send(html);
   });
-  // -------------------------------------------------------
 
-  // ---------- รับไฟล์จากฟอร์ม ----------
   app.post("/p/:id", upload.single("image"), async (req, res) => {
     const id = req.params.id;
     const session = sessions.get(id);
@@ -182,10 +194,9 @@ module.exports = function (client) {
 
       const url = attachment.url;
 
-      // ===== Embed มีแค่รูปอย่างเดียว ไม่มีข้อความ =====
       const originChannel = await client.channels.fetch(session.channelId);
       if (originChannel) {
-        const embed = new EmbedBuilder().setImage(url).setColor(0x9b59b6) ;
+        const embed = new EmbedBuilder().setColor(0x9b59b6).setImage(url);
         await originChannel.send({ embeds: [embed] });
       }
 
@@ -195,7 +206,6 @@ module.exports = function (client) {
         session.jumpUrl ||
         `https://discord.com/channels/${session.guildId}/${session.channelId}`;
 
-      // ---------- หน้า success + อนิเมชันติ๊กถูก + redirect ----------
       const doneHtml = `
 <!DOCTYPE html>
 <html lang="th">
@@ -206,54 +216,61 @@ module.exports = function (client) {
   * { box-sizing: border-box; }
   body {
     font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    background: radial-gradient(circle at top, #14532d 0, #020617 60%, #000 100%);
+    background: radial-gradient(circle at top, #064e3b 0, #001b14 70%, #000 100%);
     color: #e5e7eb;
     display: flex;
     align-items: center;
     justify-content: center;
     min-height: 100vh;
     margin: 0;
+    animation: bgPulse 5s ease-in-out infinite;
   }
-  .wrap {
-    text-align: center;
+  @keyframes bgPulse {
+    0%,100% { filter: brightness(1); }
+    50% { filter: brightness(1.3); }
   }
+  .wrap { text-align: center; }
   .check-container {
-    width: 110px;
-    height: 110px;
+    width: 130px;
+    height: 130px;
     border-radius: 999px;
-    border: 4px solid #22c55e;
+    border: 5px solid #22c55e;
     display: flex;
     align-items: center;
     justify-content: center;
-    margin: 0 auto 18px;
-    box-shadow: 0 0 24px rgba(34, 197, 94, 0.65);
-    animation: pop 0.5s.ease-out forwards;
-  }
-  .check {
-    width: 52px;
-    height: 26px;
-    border-left: 5px solid #bbf7d0;
-    border-bottom: 5px solid #bbf7d0;
-    transform: rotate(-45deg) translateY(-4px);
-    transform-origin: center;
-    animation: draw 0.5s 0.2s ease-out forwards;
-    opacity: 0;
-  }
-  h1 {
-    font-size: 20px;
-    margin-bottom: 6px;
-  }
-  p {
-    font-size: 14px;
-    opacity: 0.85;
+    margin: 0 auto 20px;
+    box-shadow: 0 0 40px rgba(34, 197, 94, 0.75), 0 0 80px rgba(34, 197, 94, 0.45);
+    animation: pop 0.4s ease-out forwards, float 3s ease-in-out infinite 0.4s;
   }
   @keyframes pop {
-    0% { transform: scale(0.6); opacity: 0; }
+    0% { transform: scale(0.4); opacity: 0; }
+    80% { transform: scale(1.15); opacity: 1; }
     100% { transform: scale(1); opacity: 1; }
   }
+  @keyframes float {
+    0%,100% { transform: translateY(0); }
+    50% { transform: translateY(-8px); }
+  }
+  .check {
+    width: 60px;
+    height: 30px;
+    border-left: 6px solid #bbf7d0;
+    border-bottom: 6px solid #bbf7d0;
+    transform: rotate(-45deg) translateY(-4px);
+    opacity: 0;
+    animation: draw 0.35s 0.25s ease-out forwards;
+  }
   @keyframes draw {
-    0% { opacity: 0; transform: rotate(-45deg) scale(0.6); }
+    0% { opacity: 0; transform: rotate(-45deg) scale(0.5); }
     100% { opacity: 1; transform: rotate(-45deg) scale(1); }
+  }
+  h1 {
+    font-size: 22px;
+    margin-bottom: 8px;
+  }
+  p {
+    font-size: 15px;
+    opacity: 0.9;
   }
 </style>
 </head>
@@ -273,7 +290,6 @@ module.exports = function (client) {
 </body>
 </html>
 `;
-      // ----------------------------------------------------
       res.setHeader("Content-Type", "text/html; charset=utf-8");
       res.send(doneHtml);
     } catch (err) {
@@ -281,9 +297,7 @@ module.exports = function (client) {
       res.status(500).send("เกิดข้อผิดพลาดขณะอัปโหลด");
     }
   });
-  // ---------------------------------------------------
 
-  // ---------- ฟัง event /p ----------
   client.on("interactionCreate", async (interaction) => {
     try {
       if (!interaction.isChatInputCommand()) return;
@@ -305,12 +319,10 @@ module.exports = function (client) {
         sessions.delete(id);
       }, 15 * 60 * 1000);
 
-      const url = `${baseUrl}/p/${id}`;
+      const url = `${resolvedBaseUrl}/p/${id}`;
 
       await interaction.reply({
-        content:
-          `กดลิ้งค์เลอออ\n${url}\n\n` +
-          `ใช้ได้15นาทีหนาาา`,
+        content: `กดลิ้งค์เลอออ\n${url}\n\nใช้ได้15นาทีหนาาา`,
         ephemeral: true,
       });
     } catch (e) {
@@ -322,10 +334,5 @@ module.exports = function (client) {
         });
       }
     }
-  });
-  // ----------------------------------
-
-  app.listen(port, () => {
-    console.log("P upload web listening on port", port);
   });
 };
