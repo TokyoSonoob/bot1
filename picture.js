@@ -4,31 +4,33 @@ const { EmbedBuilder } = require("discord.js");
 const multer = require("multer");
 const crypto = require("crypto");
 
-const PERMA_GUILD_ID = "1401622759582466229";
-const PERMA_CHANNEL_ID = "1413522411025862799";
+const PERMA_CHANNEL_ID = "1413522411025862799"; // ห้องเก็บรูปถาวร
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 8 * 1024 * 1024 },
+  limits: { fileSize: 8 * 1024 * 1024 }, // 8MB
 });
 
 module.exports = function (client, app, baseUrlFromIndex) {
+  // กันไม่ให้รันซ้ำ
   if (client.pictureUploadInitialized) return;
   client.pictureUploadInitialized = true;
 
   if (!app) {
-    throw new Error("picture.js ต้องถูกเรียกด้วย Express app: require('./picture')(client, app, baseUrl)");
+    throw new Error("❌ picture.js ต้องถูกเรียกด้วย Express app: require('./picture')(client, app, baseUrl)");
   }
 
   const sessions = new Map();
 
+  // baseUrl สำหรับสร้างลิงก์เว็บ /p/:id
   const resolvedBaseUrl =
     (baseUrlFromIndex && baseUrlFromIndex.replace(/\/+$/, "")) ||
     (process.env.P_BASE_URL && process.env.P_BASE_URL.replace(/\/+$/, "")) ||
     (process.env.RENDER_EXTERNAL_URL &&
       process.env.RENDER_EXTERNAL_URL.replace(/\/+$/, "")) ||
-    "http://localhost:3000";
+    `http://localhost:${process.env.PORT || 3000}`;
 
+  // ====== สมัคร slash command /p ======
   client.once("ready", async () => {
     try {
       if (!client.application) return;
@@ -46,8 +48,10 @@ module.exports = function (client, app, baseUrlFromIndex) {
     }
   });
 
+  // body parser แบบ form-data
   app.use(express.urlencoded({ extended: true }));
 
+  // ====== หน้าแรก /p/:id มีปุ่มเดียว + อนิเมชันตึงๆ ======
   app.get("/p/:id", (req, res) => {
     const id = req.params.id;
     const session = sessions.get(id);
@@ -162,6 +166,7 @@ module.exports = function (client, app, baseUrlFromIndex) {
     res.send(html);
   });
 
+  // ====== รับไฟล์จากฟอร์ม /p/:id ======
   app.post("/p/:id", upload.single("image"), async (req, res) => {
     const id = req.params.id;
     const session = sessions.get(id);
@@ -194,18 +199,21 @@ module.exports = function (client, app, baseUrlFromIndex) {
 
       const url = attachment.url;
 
+      // ส่ง embed กลับไปที่ห้องต้นทาง (สีม่วง)
       const originChannel = await client.channels.fetch(session.channelId);
       if (originChannel) {
         const embed = new EmbedBuilder().setColor(0x9b59b6).setImage(url);
         await originChannel.send({ embeds: [embed] });
       }
 
+      // ลบ session
       sessions.delete(id);
 
       const redirectUrl =
         session.jumpUrl ||
         `https://discord.com/channels/${session.guildId}/${session.channelId}`;
 
+      // ====== หน้า success + อนิเมชันติ๊กถูกตึงๆ ======
       const doneHtml = `
 <!DOCTYPE html>
 <html lang="th">
@@ -298,6 +306,7 @@ module.exports = function (client, app, baseUrlFromIndex) {
     }
   });
 
+  // ====== ฟัง event /p ======
   client.on("interactionCreate", async (interaction) => {
     try {
       if (!interaction.isChatInputCommand()) return;
@@ -315,6 +324,7 @@ module.exports = function (client, app, baseUrlFromIndex) {
         jumpUrl,
       });
 
+      // auto ลบ session หลัง 15 นาที
       setTimeout(() => {
         sessions.delete(id);
       }, 15 * 60 * 1000);
