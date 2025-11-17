@@ -1,11 +1,21 @@
+// server.js
 const express = require("express");
+
 const app = express();
+const port = process.env.PORT || 3000;
 
-app.get("/", (_, res) => {
-  res.send("Bot is running!");
+// Middleware พื้นฐาน
+app.use(express.json());
+
+// route เช็คสุขภาพ service
+app.get("/", (req, res) => {
+  res.send("OK");
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`🌐 Web server running on port ${PORT}`);
+// Render จะยิงเข้ามาที่ PORT ตัวนี้
+app.listen(port, () => {
+  console.log("🌐 Web server running on port", port);
 });
+
+// export app ให้ index.js / picture.js เอาไปต่อยอด
+module.exports = app;
