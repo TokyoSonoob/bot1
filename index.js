@@ -1,11 +1,20 @@
-require('dotenv').config();
+require("dotenv").config();
+const events = require("events");
 const { Client, GatewayIntentBits } = require("discord.js");
-const { db, admin } = require('./firebase');
+const { db, admin } = require("./firebase");
 require("./server");
 
+events.defaultMaxListeners = 50;
+
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+  ],
 });
+
+client.setMaxListeners(50);
 
 require("./z/all/emoji")(client);
 require("./z/all/ban")(client);
@@ -24,7 +33,6 @@ require("./z/tick/test")(client);
 require("./z/tick/ticket")(client);
 
 require("./tt")(client);
-
-
+require("./picture")(client);
 
 client.login(process.env.token);
