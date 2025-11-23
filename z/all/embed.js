@@ -19,10 +19,20 @@ module.exports = (client) => {
   const MODAL_EMBED = "embed_form_modal";
   const BTN_FIX = "btn_fix_ticket";
   const BTN_CLOSE = "btn_close_ticket";
+  const BTN_FIXED_DONE = "btn_fixed_done";
+
   const ALLOWED_ROLE_IDS = ["1438731622194085939", "1438731808039632967"];
   const STRIP_PREFIX_RE =
     /^(?:\u{1F525}|\u{23F3}[\uFE0E\uFE0F]?)+(?:[\p{Zs}]*(?:[\p{Pd}])+)?[\p{Zs}]*/u;
   const normalizeEmojiLeading = (s) => s.replace(/^[\uFE0E\uFE0F]+/, "");
+
+  const CATEGORY_NORMAL = "1442202522029785118";
+  const CATEGORY_FIXING = "1442202615520952473";
+
+  const FIX_DESC =
+    "**เขียนข้อมูลในส่งที่จะแก้ได้เลยนะคับ เดี๋ยวทางแอดมินจะมาตอบในไม่ช้า**";
+  const CREDIT_FIRST_LINE =
+    "# ฝากให้เครดิตที่ <#1439124956901277787>  ด้วยน้าาา";
 
   client.once(Events.ClientReady, async () => {
     try {
@@ -84,6 +94,15 @@ module.exports = (client) => {
     return member.roles.cache.some((r) => ALLOWED_ROLE_IDS.includes(r.id));
   };
 
+  const moveChannelToCategory = async (channel, categoryId, reason) => {
+    if (!channel || typeof channel.setParent !== "function") return;
+    try {
+      await channel.setParent(categoryId, { lockPermissions: false, reason });
+    } catch (e) {
+      console.error("moveChannelToCategory error:", e);
+    }
+  };
+
   const doFixRename = async (channel) => {
     const before = channel.name || "";
     const norm = normalizeEmojiLeading(before);
@@ -97,6 +116,49 @@ module.exports = (client) => {
     }
     if (after !== before) {
       await channel.setName(after, "fix prefix 🔥 → ⏳️ หรือเติม ⏳️-");
+    }
+  };
+
+  const buildCreditEmbed = () =>
+    new EmbedBuilder()
+      .setColor(0x9b59b6)
+      .setDescription(
+        [
+          "# ฝากให้เครดิตที่ <#1439124956901277787>  ด้วยน้าาา",
+          "## หากแอดออนมีปัญหาให้กด **แก้ไขงาน**",
+          "### ตรวจสอบให้แน่ใจว่าแอดออนโอเคแล้ว ให้กดปิดตั๋ว หากให้แก้หลังปิดห้องจะมีค่าแก้ละน้า",
+          "### หมายเหตุ : หากมีปัญหาโดยที่แอดมินไม่ได้ผิด ต้องเสียค่าแก้คับ",
+          "## หากจะสั่งเพิ่มต้องเปิดตั๋วใหม่น้าา",
+        ].join("\n")
+      )
+      .setFooter({ text: "Make by Purple Shop" })
+      .setTimestamp();
+
+  const CREDIT_ROW = () =>
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(BTN_FIX).setLabel("แก้ไขงาน").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId(BTN_CLOSE).setLabel("ปิดตั๋ว").setStyle(ButtonStyle.Danger)
+    );
+
+  const deleteOldFlowMessages = async (channel) => {
+    try {
+      const messages = await channel.messages.fetch({ limit: 50 });
+      const toDelete = [];
+      for (const m of messages.values()) {
+        if (!m.embeds || !m.embeds.length) continue;
+        const desc = m.embeds[0].description || "";
+        if (!desc) continue;
+        if (desc.includes(FIX_DESC) || desc.startsWith(CREDIT_FIRST_LINE)) {
+          toDelete.push(m);
+        }
+      }
+      for (const m of toDelete) {
+        try {
+          await m.delete().catch(() => {});
+        } catch {}
+      }
+    } catch (e) {
+      console.error("deleteOldFlowMessages error:", e);
     }
   };
 
@@ -152,7 +214,8 @@ module.exports = (client) => {
         }
         try {
           await doFixRename(channel);
-          await interaction.editReply("✅ แก้คำนำหน้าเรียบร้อย");
+          await moveChannelToCategory(channel, CATEGORY_FIXING, "/fix → move to fixing category");
+          await interaction.editReply("✅ แก้คำนำหน้าเรียบร้อย และย้ายไปหมวดแก้งานแล้ว");
         } catch (e) {
           console.error("setName(/fix) error:", e);
           await interaction.editReply("❌ เปลี่ยนชื่อห้องไม่สำเร็จ");
@@ -183,24 +246,12 @@ module.exports = (client) => {
             }
           }
         }
+        if (canManageChannel(interaction.guild, channel)) {
+          await moveChannelToCategory(channel, CATEGORY_NORMAL, "/s → move back to normal category");
+        }
         const allowPing = canMentionEveryone(interaction.guild, channel);
-        const creditEmbed = new EmbedBuilder()
-          .setColor(0x9b59b6)
-          .setDescription(
-            [
-              "# ฝากให้เครดิตที่ <#1439124956901277787>  ด้วยน้าาา",
-              "## หากแอดออนมีปัญหาให้กด **แก้ไขงาน**",
-              "### ตรวจสอบให้แน่ใจว่าแอดออนโอเคแล้ว ให้กดปิดตั๋ว หากให้แก้หลังปิดห้องจะมีค่าแก้ละน้า",
-              "### หมายเหตุ : หากมีปัญหาโดยที่แอดมินไม่ได้ผิด ต้องเสียค่าแก้คับ",
-              "## หากจะสั่งเพิ่มต้องเปิดตั๋วใหม่น้าา",
-            ].join("\n")
-          )
-          .setFooter({ text: "Make by Purple Shop" })
-          .setTimestamp();
-        const row = new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId(BTN_FIX).setLabel("แก้ไขงาน").setStyle(ButtonStyle.Primary),
-          new ButtonBuilder().setCustomId(BTN_CLOSE).setLabel("ปิดตั๋ว").setStyle(ButtonStyle.Danger)
-        );
+        const creditEmbed = buildCreditEmbed();
+        const row = CREDIT_ROW();
         try {
           await channel.send({
             content: "@everyone",
@@ -218,25 +269,100 @@ module.exports = (client) => {
 
       if (interaction.isButton() && interaction.customId === BTN_FIX) {
         try {
-          await interaction.deferUpdate().catch(() => {});
           const channel = interaction.channel;
           if (!channel) return;
+
+          const before = channel.name || "";
+          const norm = normalizeEmojiLeading(before);
+          const hasHourglass = /^\u{23F3}/u.test(norm);
+          const inFixCategory = channel.parentId === CATEGORY_FIXING;
+
+          if (hasHourglass && inFixCategory) {
+            await safeReply(interaction, { content: "กดซ้ำไม", flags: 1 << 6 });
+            return;
+          }
+
+          await interaction.deferUpdate().catch(() => {});
+
           if (canManageChannel(interaction.guild, channel)) {
             await doFixRename(channel).catch(() => {});
+            await moveChannelToCategory(
+              channel,
+              CATEGORY_FIXING,
+              "BTN_FIX → move to fixing category"
+            );
           }
+
           const ROLE_TO_PING = "1438723520740724786";
           const embed = new EmbedBuilder()
             .setColor(0x9b59b6)
-            .setDescription("**เขียนข้อมูลในส่งที่จะแก้ได้เลยนะคับ เดี๋ยวทางแอดมินจะมาตอบในไม่ช้า**")
+            .setDescription(FIX_DESC)
             .setFooter({ text: "Make by Purple Shop" })
             .setTimestamp();
+          const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+              .setCustomId(BTN_FIXED_DONE)
+              .setLabel("แก้ละะะ")
+              .setStyle(ButtonStyle.Danger)
+          );
           await channel.send({
             content: `<@&${ROLE_TO_PING}>`,
             allowedMentions: { roles: [ROLE_TO_PING] },
             embeds: [embed],
+            components: [row],
           });
         } catch (e) {
           console.error("BTN_FIX error:", e);
+        }
+        return;
+      }
+
+      if (interaction.isButton() && interaction.customId === BTN_FIXED_DONE) {
+        try {
+          if (!interaction.memberPermissions?.has(PermissionsBitField.Flags.Administrator)) {
+            return safeReply(interaction, {
+              content: "❌ ปุ่มนี้กดได้เฉพาะแอดมินนะ",
+              flags: 1 << 6,
+            });
+          }
+
+          await interaction.deferUpdate().catch(() => {});
+          const channel = interaction.channel;
+          if (channel && canManageChannel(interaction.guild, channel)) {
+            await moveChannelToCategory(
+              channel,
+              CATEGORY_NORMAL,
+              "BTN_FIXED_DONE → move back to normal"
+            );
+
+            const before = channel.name || "";
+            const after = before.replace(STRIP_PREFIX_RE, "");
+            if (after !== before && typeof channel.setName === "function") {
+              try {
+                await channel.setName(after, "BTN_FIXED_DONE remove prefix");
+              } catch {}
+            }
+          }
+
+          if (channel) {
+            await deleteOldFlowMessages(channel);
+            const allowPing = canMentionEveryone(interaction.guild, channel);
+            const creditEmbed = buildCreditEmbed();
+            const row = CREDIT_ROW();
+            await channel.send({
+              content: "@everyone",
+              allowedMentions: allowPing ? { parse: ["everyone"] } : { parse: [] },
+              embeds: [creditEmbed],
+              components: [row],
+            });
+          }
+
+          await safeReply(interaction, {
+            content: "✅ ลบข้อความแก้งานเก่า รีเซ็ตชื่อห้อง และส่งเครดิตใหม่แล้ว",
+            flags: 1 << 6,
+          });
+        } catch (e) {
+          console.error("BTN_FIXED_DONE error:", e);
         }
         return;
       }
@@ -286,7 +412,10 @@ module.exports = (client) => {
       if (interaction.deferred) {
         await interaction.editReply("❌ มีข้อผิดพลาด ลองใหม่อีกครั้ง");
       } else {
-        await safeReply(interaction, { content: "❌ มีข้อผิดพลาด ลองใหม่อีกครั้ง", flags: 1 << 6 });
+        await safeReply(interaction, {
+          content: "❌ มีข้อผิดพลาด ลองใหม่อีกครั้ง",
+          flags: 1 << 6,
+        });
       }
     }
   });
