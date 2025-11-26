@@ -22,6 +22,14 @@ const PAY_IMAGE_URL =
 const FIGURA_QR_URL =
   "https://media.discordapp.net/attachments/1413522411025862799/1425367891791970386/421-3.jpg?ex=68fe670b&is=68fd158b&hm=bb5c9eac100c8916f06bef080b6cef31cf4a236b91fbf020528557f203afe796&=&format=webp&width=1250&height=921";
 const PRIORITY_CATEGORY_ID = "1442202853874729092";
+
+// ยศ staff ที่ต้องเห็นห้องโมเดล/ฟิกุร่า
+const STAFF_MODEL_ROLE_ID = "1438731622194085939";
+const STAFF_FIGURA_ROLE_ID = "1438731808039632967";
+
+// ยศที่จะถูกแท็กในเธรดตั๋วสั่งงานแอดออน (standard แบบหลายชิ้น)
+const ADDON_THREAD_ROLE_ID = "1438723520740724786";
+
 const ADDON_BASE_PRICE = 30;
 
 const summaryMessages = new Map();
@@ -445,14 +453,17 @@ module.exports = function (client) {
 
   async function createTicketChannel(interaction, mode) {
     try {
-      const guildId = interaction.guild.id;
+      const guild = interaction.guild;
+      const guildId = guild.id;
       const settingsDoc = await db.doc(`ticket_settings/${guildId}`).get();
+
       const parentCategoryId =
         mode === "sculpt" || mode === "figura"
           ? MODEL_CATEGORY_ID
           : settingsDoc.exists && settingsDoc.data().categoryId
           ? settingsDoc.data().categoryId
           : null;
+
       await ensureDeferred(interaction, true);
       if (!parentCategoryId) {
         await interaction.editReply(
@@ -460,10 +471,8 @@ module.exports = function (client) {
         );
         return null;
       }
-      const check = await fetchValidCategory(
-        interaction.guild,
-        parentCategoryId
-      );
+
+      const check = await fetchValidCategory(guild, parentCategoryId);
       if (!check.ok) {
         await interaction.editReply(
           `❌ สร้างห้องไม่สำเร็จ: ${check.reason}\nกรุณาตั้งค่าใหม่ด้วยคำสั่ง \`!ticket <categoryId ของหมวดที่มีอยู่จริง>\``
@@ -471,42 +480,94 @@ module.exports = function (client) {
         return null;
       }
       const parentCategory = check.cat;
+
       const channelName =
         mode === "sculpt"
           ? `🔥-𝕄𝕠𝕕𝕖𝕝_${interaction.user.username}`
           : mode === "figura"
           ? `🔥-𝔽𝕚𝕘𝕦𝕣𝕒_${interaction.user.username}`
           : `🔥-𝕋𝕚𝕔𝕜𝕖𝕥_${interaction.user.username}`.replace("𝕕", "k");
-      const channel = await interaction.guild.channels.create({
+
+      const permissionOverwrites = [];
+
+      if (mode === "sculpt" || mode === "figura") {
+        const everyoneId = guild.roles.everyone.id;
+        permissionOverwrites.push(
+          {
+            id: everyoneId,
+            deny: [PermissionsBitField.Flags.ViewChannel],
+          },
+          {
+            id: interaction.user.id,
+            allow: [
+              PermissionsBitField.Flags.ViewChannel,
+              PermissionsBitField.Flags.SendMessages,
+              PermissionsBitField.Flags.AttachFiles,
+              PermissionsBitField.Flags.EmbedLinks,
+              PermissionsBitField.Flags.ReadMessageHistory,
+            ],
+          },
+          {
+            id: client.user.id,
+            allow: [
+              PermissionsBitField.Flags.ViewChannel,
+              PermissionsBitField.Flags.SendMessages,
+              PermissionsBitField.Flags.ManageChannels,
+              PermissionsBitField.Flags.ManageMessages,
+              PermissionsBitField.Flags.AttachFiles,
+              PermissionsBitField.Flags.EmbedLinks,
+              PermissionsBitField.Flags.ReadMessageHistory,
+            ],
+          },
+          {
+            id: STAFF_MODEL_ROLE_ID,
+            allow: [
+              PermissionsBitField.Flags.ViewChannel,
+              PermissionsBitField.Flags.SendMessages,
+              PermissionsBitField.Flags.ReadMessageHistory,
+            ],
+          },
+          {
+            id: STAFF_FIGURA_ROLE_ID,
+            allow: [
+              PermissionsBitField.Flags.ViewChannel,
+              PermissionsBitField.Flags.SendMessages,
+              PermissionsBitField.Flags.ReadMessageHistory,
+            ],
+          }
+        );
+      }
+
+      const channel = await guild.channels.create({
         name: channelName,
         type: ChannelType.GuildText,
         parent: parentCategory.id,
+        permissionOverwrites:
+          permissionOverwrites.length > 0 ? permissionOverwrites : undefined,
       });
-      try {
-        await channel.lockPermissions();
-      } catch {}
-      await channel.permissionOverwrites
-        .edit(interaction.user.id, {
-          ViewChannel: true,
-          SendMessages: true,
-        })
-        .catch(() => {});
-      await channel.permissionOverwrites
-        .edit(client.user.id, {
-          ViewChannel: true,
-          SendMessages: true,
-          ManageChannels: true,
-        })
-        .catch(() => {});
-      if (mode === "sculpt" || mode === "figura") {
+
+      // standard/bundle/preset → sync perms จากหมวดหมู่ แล้วเพิ่มสิทธิ์คนกด + บอท
+      if (mode !== "sculpt" && mode !== "figura") {
+        try {
+          await channel.lockPermissions();
+        } catch {}
         await channel.permissionOverwrites
-          .edit(MODEL_ROLE_ID, {
+          .edit(interaction.user.id, {
             ViewChannel: true,
             SendMessages: true,
           })
           .catch(() => {});
+        await channel.permissionOverwrites
+          .edit(client.user.id, {
+            ViewChannel: true,
+            SendMessages: true,
+            ManageChannels: true,
+          })
+          .catch(() => {});
       }
+
       initState(interaction.user.id, channel.id, mode);
+
       const controlRow = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId("close_ticket")
@@ -517,19 +578,25 @@ module.exports = function (client) {
           .setLabel("อัปเป็นคิวเร่ง")
           .setStyle(ButtonStyle.Danger)
       );
-      const contentTag =
-        mode === "sculpt" || mode === "figura"
-          ? `<@${interaction.user.id}> <@&${MODEL_ROLE_ID}>`
-          : `<@${interaction.user.id}>`;
+
+      let contentTag = `<@${interaction.user.id}>`;
+      if (mode === "sculpt") {
+        contentTag += ` <@&${STAFF_MODEL_ROLE_ID}>`;
+      } else if (mode === "figura") {
+        contentTag += ` <@&${STAFF_FIGURA_ROLE_ID}>`;
+      }
+
       const openEmbed = new EmbedBuilder()
         .setTitle("ขอบคุณที่ไว้ใจร้านเรา")
         .setDescription("กรอก/แจ้งข้อมูลที่ด้านล่างได้เลยนะคับ")
         .setColor(0x9b59b6);
+
       await channel.send({
         content: contentTag,
         embeds: [openEmbed],
         components: [controlRow],
       });
+
       if (mode === "bundle") {
         const embed = new EmbedBuilder()
           .setTitle("รวมแอดออนสกิน")
@@ -593,6 +660,7 @@ module.exports = function (client) {
           components: figuraOptionComponents(),
         });
       }
+
       await interaction.editReply(`✅ เปิดตั๋วให้แล้ว : ${channel}`);
       return channel;
     } catch (err) {
@@ -605,8 +673,9 @@ module.exports = function (client) {
     }
   }
 
-  async function postStandardUIInChannel(channel) {
+  async function postStandardUIInChannel(channel, mention) {
     await channel.send({
+      content: mention || null,
       embeds: [optionEmbed()],
       components: optionComponents(),
     });
@@ -618,10 +687,10 @@ module.exports = function (client) {
         if (interaction.customId === "create_ticket_standard") {
           const modal = new ModalBuilder()
             .setCustomId("order_qty_modal_standard")
-            .setTitle("จำนวนชิ้นที่จะสั่ง (แอดออนสกิน)");
+            .setTitle("ไม่ใช่จำนวนออฟชั่นน้าาาา");
           const qty = new TextInputBuilder()
             .setCustomId("order_qty")
-            .setLabel("จำนวนแอดออนที่จะสั่ง (1ถึง20)")
+            .setLabel("กรอกจำนวนตัวที่จะสั่ง (1-20)")
             .setStyle(TextInputStyle.Short)
             .setRequired(true)
             .setPlaceholder("เช่น 1, 2, 3 ...")
@@ -864,6 +933,7 @@ module.exports = function (client) {
           } else {
             formRequired.set(chan.id, false);
           }
+
           const threadLinks = [];
           for (let i = 1; i <= qty; i++) {
             const thread = await chan.threads.create({
@@ -875,15 +945,18 @@ module.exports = function (client) {
             formRequired.set(thread.id, true);
             formCompleted.set(thread.id, false);
             await tryAddMemberToThread(thread, interaction.user.id);
-            await thread.send({
-              content: `<@${interaction.user.id}>`,
-              embeds: [optionEmbed()],
-              components: optionComponents(),
-            });
+
+            // ส่ง UI เลือกออฟชั่น + แท็กเจ้าของ + ยศ 1438723520740724786
+            await postStandardUIInChannel(
+              thread,
+              `<@${interaction.user.id}> <@&${ADDON_THREAD_ROLE_ID}>`
+            );
+
             await deleteThreadCreatedSystemMessage(chan, thread.id);
             const url = `https://discord.com/channels/${chan.guild.id}/${thread.id}`;
             threadLinks.push(`**[ตัวที่ ${i}](${url})**`);
           }
+
           const listEmbed = new EmbedBuilder()
             .setTitle("เปิดรายการตามจำนวนที่สั่งแล้ว")
             .setDescription(
@@ -1169,7 +1242,12 @@ module.exports = function (client) {
     } catch (err) {
       console.error("interactionCreate error:", err);
       try {
-        if (interaction.isRepliable?.() && !interaction.replied && !interaction.deferred) {
+        if (
+          typeof interaction.isRepliable === "function" &&
+          interaction.isRepliable() &&
+          !interaction.replied &&
+          !interaction.deferred
+        ) {
           await interaction.reply({
             content: "❌ มีข้อผิดพลาด",
             flags: MessageFlags.Ephemeral,
@@ -1179,18 +1257,27 @@ module.exports = function (client) {
     }
   });
 
+  // เตือน "กรอกข้อมูลด้วยน้าา" — เฉพาะห้องที่เลือกออฟชั่นแล้ว
   client.on("messageCreate", async (message) => {
     try {
       if (!message.guild || message.author.bot) return;
+
       const ownerId = channelOwner.get(message.channel.id);
       const needForm = formRequired.get(message.channel.id);
       const doneForm = formCompleted.get(message.channel.id);
+
       if (!ownerId || !needForm) return;
       if (doneForm) return;
       if (message.author.id !== ownerId) return;
-      if (!message.content.startsWith("!ticket")) {
-        await message.reply("# กรอกข้อมูลด้วยน้าา");
-      }
+      if (message.content.startsWith("!ticket")) return;
+
+      const k = keyOf(ownerId, message.channel.id);
+      const selections = userSelections.get(k);
+
+      // ยังไม่เลือกออฟชั่น → ยังไม่ต้องเตือน
+      if (!selections || selections.size === 0) return;
+
+      await message.reply("# กรอกข้อมูลด้วยน้าา");
     } catch (e) {
       console.error("messageCreate reminder error:", e);
     }
