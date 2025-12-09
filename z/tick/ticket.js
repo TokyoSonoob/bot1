@@ -12,6 +12,7 @@ const {
   MessageFlags,
   MessageType,
 } = require("discord.js");
+const cron = require("node-cron");
 const { db } = require("../../firebase");
 
 const MODEL_ROLE_ID = "1438723080246788239";
@@ -23,14 +24,16 @@ const FIGURA_QR_URL =
   "https://media.discordapp.net/attachments/1413522411025862799/1425367891791970386/421-3.jpg?ex=68fe670b&is=68fd158b&hm=bb5c9eac100c8916f06bef080b6cef31cf4a236b91fbf020528557f203afe796&=&format=webp&width=1250&height=921";
 const PRIORITY_CATEGORY_ID = "1442202853874729092";
 
-// ยศ staff ที่ต้องเห็นห้องโมเดล/ฟิกุร่า
 const STAFF_MODEL_ROLE_ID = "1438731622194085939";
 const STAFF_FIGURA_ROLE_ID = "1438731808039632967";
 
-// ยศที่จะถูกแท็กในเธรดตั๋วสั่งงานแอดออน (standard แบบหลายชิ้น)
 const ADDON_THREAD_ROLE_ID = "1438723520740724786";
 
 const ADDON_BASE_PRICE = 30;
+
+const LOG_GUILD_ID = "1401622759582466229";
+const DETAIL_LOG_CHANNEL_ID = "1447734229948567583";
+const SUMMARY_LOG_CHANNEL_ID = "1447734256712286218";
 
 const summaryMessages = new Map();
 const formMessages = new Map();
@@ -44,6 +47,7 @@ const formRequired = new Map();
 const formCompleted = new Map();
 const formData = new Map();
 const figuraRights = new Map();
+const bundleNames = new Map();
 
 const labels = {
   hair_move: "ผมขยับ",
@@ -145,6 +149,7 @@ function initState(userId, channelId, mode) {
     buffQty: null,
     buffNotes: "",
   });
+  bundleNames.delete(k);
   if (mode === "figura") figuraRights.set(k, "normal");
   channelOwner.set(channelId, userId);
   formRequired.set(channelId, mode === "standard");
@@ -268,6 +273,260 @@ function figuraOptionComponents() {
   );
   return [new ActionRowBuilder().addComponents(select), rightsRow];
 }
+
+/* ===== helper: วันตามเวลาไทย ตัด 06:00 ===== */
+function getBangkokDayKeyFromTs(tsMs) {
+  const BKK_OFFSET = 7 * 60 * 60 * 1000;
+  const CUTOFF = 6 * 60 * 60 * 1000;
+  const shifted = tsMs + BKK_OFFSET - CUTOFF;
+  const d = new Date(shifted);
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+function getTodayBangkokDayKey() {
+  return getBangkokDayKeyFromTs(Date.now());
+}
+function extractAmountFromEmbed(emb) {
+  if (!emb) return null;
+  let txt = "";
+  if (Array.isArray(emb.fields)) {
+    const f = emb.fields.find((x) => (x.name || "") === "ยอดล่าสุด");
+    if (f && f.value) txt = f.value;
+  }
+  if (!txt && emb.description) txt = emb.description;
+  if (!txt) return null;
+  const cleaned = String(txt).replace(/[^\d]/g, "");
+  if (!cleaned) return null;
+  const val = parseInt(cleaned, 10);
+  if (!Number.isFinite(val)) return null;
+  return val;
+}
+
+/* ===== summary per day ===== */
+
+async function rebuildSummaryForDay(client, dayKey) {
+  try {
+    const guild = await client.guilds.fetch(LOG_GUILD_ID).catch(() => null);
+    if (!guild) return;
+
+    const detailChannel = await guild.channels
+      .fetch(DETAIL_LOG_CHANNEL_ID)
+      .catch(() => null);
+    const summaryChannel = await guild.channels
+      .fetch(SUMMARY_LOG_CHANNEL_ID)
+      .catch(() => null);
+
+    if (!detailChannel || !detailChannel.isTextBased() || !summaryChannel)
+      return;
+
+    const entries = [];
+    let before;
+    let loops = 0;
+
+    while (loops < 30) {
+      const batch = await detailChannel.messages
+        .fetch({ limit: 100, before })
+        .catch(() => null);
+      if (!batch || !batch.size) break;
+      for (const msg of batch.values()) {
+        if (msg.author.id !== client.user.id) continue;
+        const emb = msg.embeds && msg.embeds[0];
+        if (!emb) continue;
+        const title = (emb.title || "").toLowerCase();
+        const isStandard = title.includes("ทำแอดออนสกิน");
+        const isBundle = title.includes("รวมแอดออนสกิน");
+        if (!isStandard && !isBundle) continue;
+
+        const msgDay = getBangkokDayKeyFromTs(msg.createdTimestamp);
+        if (msgDay !== dayKey) continue;
+
+        const amount = extractAmountFromEmbed(emb);
+        if (amount == null || amount <= 0) continue;
+
+        const mode = isBundle ? "bundle" : "standard";
+
+        let ticketChannelId = null;
+        let ownerId = null;
+        const desc = emb.description || "";
+        const mChan = desc.match(/<#(\d+)>/);
+        if (mChan) ticketChannelId = mChan[1];
+        const mUser = desc.match(/<@(\d+)>/);
+        if (mUser) ownerId = mUser[1];
+
+        entries.push({
+          ts: msg.createdTimestamp,
+          mode,
+          amount,
+          ticketChannelId,
+          ownerId,
+        });
+      }
+      const last = batch.last();
+      before = last ? last.id : undefined;
+      if (!before) break;
+      loops++;
+    }
+
+    entries.sort((a, b) => a.ts - b.ts);
+
+    let totalStandard = 0;
+    let totalBundle = 0;
+    let countStandard = 0;
+    let countBundle = 0;
+
+    const breakdownLines = [];
+
+    entries.forEach((e, idx) => {
+      const typeLabel =
+        e.mode === "bundle" ? "รวมแอดออนสกิน" : "ทำแอดออนสกิน";
+      if (e.mode === "bundle") {
+        totalBundle += e.amount;
+        countBundle++;
+      } else {
+        totalStandard += e.amount;
+        countStandard++;
+      }
+      const chan = e.ticketChannelId ? `<#${e.ticketChannelId}>` : "-";
+      const user = e.ownerId ? `<@${e.ownerId}>` : "-";
+      breakdownLines.push(
+        `**${idx + 1}.** ${typeLabel} — ${chan} — ${user} — ${e.amount} บาท`
+      );
+    });
+
+    const totalAll = totalStandard + totalBundle;
+
+    const lines = [];
+    lines.push(
+      `ช่วงเวลา: 06:00 - 06:00 (เวลาไทย) ของวันที่ ${dayKey}`
+    );
+    lines.push("");
+
+    if (breakdownLines.length) {
+      lines.push("รายการ:");
+      lines.push(...breakdownLines);
+    } else {
+      lines.push("ยังไม่มีรายการเงินเข้าวันนี้");
+    }
+
+    lines.push("");
+    lines.push(
+      `• ทำแอดออนสกิน: ${countStandard} งาน / ${totalStandard} บาท`
+    );
+    lines.push(
+      `• รวมแอดออนสกิน: ${countBundle} รายการ / ${totalBundle} บาท`
+    );
+    lines.push("");
+    lines.push(`**รวมทั้งหมด: ${totalAll} บาท**`);
+
+    const title = `สรุปเงินเข้าแอดออนสกิน ประจำวันที่ ${dayKey}`;
+    const embed = new EmbedBuilder()
+      .setTitle(title)
+      .setDescription(lines.join("\n"))
+      .setColor(0x9b59b6)
+      .setTimestamp();
+
+    const existing = await summaryChannel.messages
+      .fetch({ limit: 50 })
+      .catch(() => null);
+    let summaryMsg = null;
+    if (existing && existing.size) {
+      for (const msg of existing.values()) {
+        if (msg.author.id !== client.user.id) continue;
+        const e = msg.embeds && msg.embeds[0];
+        if (e && typeof e.title === "string" && e.title.includes(dayKey)) {
+          summaryMsg = msg;
+          break;
+        }
+      }
+    }
+
+    if (summaryMsg) {
+      await summaryMsg.edit({ embeds: [embed] }).catch(() => {});
+    } else {
+      await summaryChannel.send({ embeds: [embed] }).catch(() => {});
+    }
+  } catch (e) {
+    console.error("rebuildSummaryForDay error:", e);
+  }
+}
+
+/* ===== log เงินเข้า (detail) + อัปเดต summary ===== */
+
+async function upsertIncomeLog(client, params) {
+  try {
+    const {
+      ownerId,
+      ticketChannelId,
+      mode,
+      total,
+      bundleName = "",
+    } = params;
+    if (!total || total <= 0) return;
+    const guild = await client.guilds.fetch(LOG_GUILD_ID).catch(() => null);
+    if (!guild) return;
+    const logChannel = await guild.channels
+      .fetch(DETAIL_LOG_CHANNEL_ID)
+      .catch(() => null);
+    if (!logChannel || !logChannel.isTextBased()) return;
+
+    const mark = `ticket:${ticketChannelId}`;
+    let existing = null;
+    const fetched = await logChannel.messages.fetch({ limit: 100 });
+    for (const msg of fetched.values()) {
+      if (msg.author.id !== client.user.id) continue;
+      if (typeof msg.content === "string" && msg.content.includes(mark)) {
+        existing = msg;
+        break;
+      }
+    }
+
+    const title =
+      mode === "bundle"
+        ? "เงินเข้า: รวมแอดออนสกิน"
+        : "เงินเข้า: ทำแอดออนสกิน";
+    const descLines = [];
+    descLines.push(`• ช่องตั๋ว: <#${ticketChannelId}>`);
+    descLines.push(`• ลูกค้า: <@${ownerId}>`);
+    if (mode === "bundle") {
+      descLines.push(`• ประเภท: รวมแอดออนสกิน`);
+      if (bundleName)
+        descLines.push(`• ชื่อแอดออน: \`${bundleName}\``);
+    } else {
+      descLines.push(`• ประเภท: ทำแอดออนสกิน`);
+    }
+    const embed = new EmbedBuilder()
+      .setTitle(title)
+      .setDescription(descLines.join("\n"))
+      .addFields({
+        name: "ยอดล่าสุด",
+        value: `${total} บาท`,
+        inline: true,
+      })
+      .setColor(0x9b59b6);
+
+    let logMsg;
+    if (existing) {
+      logMsg = await existing
+        .edit({ content: mark, embeds: [embed] })
+        .catch(() => null);
+    } else {
+      logMsg = await logChannel
+        .send({ content: mark, embeds: [embed] })
+        .catch(() => null);
+    }
+    if (!logMsg) return;
+
+    const dayKey = getBangkokDayKeyFromTs(logMsg.createdTimestamp);
+    await rebuildSummaryForDay(client, dayKey);
+  } catch (e) {
+    console.error("upsertIncomeLog error:", e);
+  }
+}
+
+/* ===== ส่วน summary หลักของตั๋วเดิม (ฝั่งลูกค้า) ===== */
+
 async function postOrReplaceSummary(interaction) {
   const ownerId =
     channelOwner.get(interaction.channel.id) || interaction.user.id;
@@ -289,6 +548,7 @@ async function postOrReplaceSummary(interaction) {
               .setStyle(ButtonStyle.Primary)
           ),
         ];
+
   if (mode === "figura") {
     const lines = [];
     lines.push("# รวมราคา (Figura)");
@@ -303,8 +563,8 @@ async function postOrReplaceSummary(interaction) {
     else if (right === "x2")
       lines.push("**• สิทธิ์: สิทธิ์ขาด ×2**");
     else lines.push("**• สิทธิ์: ปกติ (ไม่บวก)**");
-    const total = computeFiguraTotal(k);
-    lines.push(`\n**รวมราคา: ${total} บาท**`, "## โอนเงินได้ที่");
+    const totalFig = computeFiguraTotal(k);
+    lines.push(`\n**รวมราคา: ${totalFig} บาท**`, "## โอนเงินได้ที่");
     const old = summaryMessages.get(k);
     if (old && old.deletable) await old.delete().catch(() => {});
     const payEmbed = new EmbedBuilder()
@@ -318,7 +578,12 @@ async function postOrReplaceSummary(interaction) {
     summaryMessages.set(k, msg);
     return;
   }
+
   const lines = [];
+  if (mode === "bundle") {
+    const name = bundleNames.get(k) || "";
+    lines.push(`# ชื่อแอดออน : \`${name || "-"}\``);
+  }
   lines.push("# รวมราคาแอดออน");
   if (details.length) lines.push(...details);
   if (selections.has("bangs")) {
@@ -361,7 +626,29 @@ async function postOrReplaceSummary(interaction) {
     components,
   });
   summaryMessages.set(k, msg);
+
+  if (mode === "standard") {
+    const readyStandard =
+      selections.size > 0 && (!needForm || (needForm && doneForm));
+    if (readyStandard) {
+      await upsertIncomeLog(interaction.client, {
+        ownerId,
+        ticketChannelId: interaction.channel.id,
+        mode: "standard",
+        total,
+      });
+    }
+  } else if (mode === "bundle") {
+    await upsertIncomeLog(interaction.client, {
+      ownerId,
+      ticketChannelId: interaction.channel.id,
+      mode: "bundle",
+      total,
+      bundleName: bundleNames.get(k) || "",
+    });
+  }
 }
+
 async function fetchValidCategory(guild, categoryId) {
   if (!/^\d{17,20}$/.test(String(categoryId || "")))
     return { ok: false, reason: "รูปแบบหมวดหมู่ไม่ถูกต้อง" };
@@ -546,7 +833,6 @@ module.exports = function (client) {
           permissionOverwrites.length > 0 ? permissionOverwrites : undefined,
       });
 
-      // standard/bundle/preset → sync perms จากหมวดหมู่ แล้วเพิ่มสิทธิ์คนกด + บอท
       if (mode !== "sculpt" && mode !== "figura") {
         try {
           await channel.lockPermissions();
@@ -783,7 +1069,17 @@ module.exports = function (client) {
             .setRequired(true)
             .setMinLength(1)
             .setMaxLength(4);
-          modal.addComponents(new ActionRowBuilder().addComponents(qty));
+          const nameInput = new TextInputBuilder()
+            .setCustomId("bundle_name")
+            .setLabel("ชื่อแอดออน (พิมพ์อะไรก็ได้)")
+            .setPlaceholder("กรอกมาเลออ")
+            .setStyle(TextInputStyle.Short)
+            .setRequired(false)
+            .setMaxLength(100);
+          modal.addComponents(
+            new ActionRowBuilder().addComponents(qty),
+            new ActionRowBuilder().addComponents(nameInput)
+          );
           await interaction.showModal(modal);
           return;
         }
@@ -946,7 +1242,6 @@ module.exports = function (client) {
             formCompleted.set(thread.id, false);
             await tryAddMemberToThread(thread, interaction.user.id);
 
-            // ส่ง UI เลือกออฟชั่น + แท็กเจ้าของ + ยศ 1438723520740724786
             await postStandardUIInChannel(
               thread,
               `<@${interaction.user.id}> <@&${ADDON_THREAD_ROLE_ID}>`
@@ -972,6 +1267,8 @@ module.exports = function (client) {
         if (interaction.customId === "bundle_modal") {
           const raw =
             (interaction.fields.getTextInputValue("bundle_count") || "").trim();
+          const nameRaw =
+            (interaction.fields.getTextInputValue("bundle_name") || "").trim();
           if (!/^\d{1,4}$/.test(raw))
             return safeReply(
               interaction,
@@ -996,6 +1293,7 @@ module.exports = function (client) {
             `**• รวมแอดออนสกิน: ${n} × 10 = ${addPrice} บาท**`,
           ]);
           setSubtotal(k, addPrice);
+          bundleNames.set(k, nameRaw);
           await ensureDeferred(interaction, true);
           await postOrReplaceSummary(interaction);
           await interaction.editReply("✅ บันทึกรวมแอดออนแล้ว");
@@ -1257,7 +1555,6 @@ module.exports = function (client) {
     }
   });
 
-  // เตือน "กรอกข้อมูลด้วยน้าา" — เฉพาะห้องที่เลือกออฟชั่นแล้ว
   client.on("messageCreate", async (message) => {
     try {
       if (!message.guild || message.author.bot) return;
@@ -1274,7 +1571,6 @@ module.exports = function (client) {
       const k = keyOf(ownerId, message.channel.id);
       const selections = userSelections.get(k);
 
-      // ยังไม่เลือกออฟชั่น → ยังไม่ต้องเตือน
       if (!selections || selections.size === 0) return;
 
       await message.reply("# กรอกข้อมูลด้วยน้าา");
@@ -1282,4 +1578,18 @@ module.exports = function (client) {
       console.error("messageCreate reminder error:", e);
     }
   });
+
+  client.once("ready", () => {
+    const key = getTodayBangkokDayKey();
+    rebuildSummaryForDay(client, key).catch(() => {});
+  });
+
+  cron.schedule(
+    "0 6 * * *",
+    () => {
+      const key = getTodayBangkokDayKey();
+      rebuildSummaryForDay(client, key).catch(() => {});
+    },
+    { timezone: "Asia/Bangkok" }
+  );
 };
